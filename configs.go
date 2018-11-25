@@ -6,20 +6,20 @@ import (
 )
 
 
-type Auth struct {
-	ApiKey string `json:"apikey"`
-	GoogleCX string `json:"cx"`
-}
-
-type WatcherConf struct {
-	MinimalAviable int `json:"minimal_aviable"`
-	MaximumUses int `json:"maximal_uses"`
-	Checktime int `json:"checktime"`
-}
-
 type ServConfig struct {
-	Auth Auth `json:"auth"`
-	WatcherConf WatcherConf `json:"watcher"`
+	Auth struct {
+		ApiKey string `json:"apikey"`
+		GoogleCX string `json:"cx"`
+	} `json:"auth"`
+	WatcherConf struct {
+		MinimalAviable int `json:"minimal_aviable"`
+		MaximumUses int `json:"maximal_uses"`
+		Checktime int `json:"checktime"`
+	} `json:"watcher"`
+	ServingConf struct {
+		Mode string `json:"mode"`
+		ServingType string  `json:"type"`
+	} `json:"serving"`
 	ImgFolder string `json:"folder"`
 	DbPath string `json:"db"`
 	Debug int `json:"debug"`
