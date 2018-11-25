@@ -25,6 +25,7 @@ type ServConfig struct {
 	Debug int `json:"debug"`
 	Mode string `json:"engine"`
 	Endpoints []string `json:"endpoints"`
+	Logfile string `json:"logfile"`
 }
 
 func LoadConfig(path string) (ServConfig, error) {

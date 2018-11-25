@@ -1,19 +1,12 @@
 package main
 
 import (
+	log "github.com/sirupsen/logrus"
 	"fmt"
 	"github.com/imroc/req"
-	"log"
 	"math/rand"
 	"time"
 )
-
-
-
-type Searhcer interface {
-	SearchImages(query string) ([]string, error)
-}
-
 
 type GoogleResponse struct {
 	Kind string `json:"kind"`

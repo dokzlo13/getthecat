@@ -1,6 +1,7 @@
 package main
 
 import (
+	log "github.com/sirupsen/logrus"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"github.com/h2non/filetype"
 	"github.com/imroc/req"
 	"github.com/satori/go.uuid"
-	"log"
 	"image"
 	"io"
 	"os"

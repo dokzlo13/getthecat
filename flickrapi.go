@@ -1,9 +1,9 @@
 package main
 
 import (
+	log "github.com/sirupsen/logrus"
 	"encoding/json"
 	"github.com/azer/go-flickr"
-	"log"
 	"strconv"
 )
 

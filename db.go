@@ -1,6 +1,7 @@
 package main
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"os"
@@ -61,6 +62,7 @@ func (ag ImgWatcher) GetImg(ImgDB ImgDB) string {
 func NewImgWatcher(db *gorm.DB, minimalAviable int,  maximalUses int, checktime int, debug int) ImgWatcher {
 	if debug == 2 {
 		db = db.Debug()
+		db.SetLogger(log.StandardLogger())
 	}
 	return ImgWatcher{DB: db, MinimalAviable:minimalAviable, MaximalUses:maximalUses, renew:checktime}
 }

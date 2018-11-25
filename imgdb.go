@@ -1,9 +1,9 @@
 package main
 
 import (
+	log "github.com/sirupsen/logrus"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"path/filepath"
 )

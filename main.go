@@ -1,9 +1,9 @@
 package main
 
 import (
+	log "github.com/sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
-	"log"
 	"math/rand"
 	"net/http"
 	"os"
@@ -45,12 +45,14 @@ func main(){
 		log.Fatalln("Error reading conf")
 	}
 
+	setupLogs(conf.Debug, conf.Logfile)
+
 	var Api Searhcer
 
 	switch conf.Mode {
-	case "google":
-		log.Println("Using GOOGLE")
-		Api = NewGoogleAPI(conf.Auth.ApiKey, conf.Auth.GoogleCX)
+	//case "google":
+	//	log.Println("Using GOOGLE")
+	//	Api = NewGoogleAPI(conf.Auth.ApiKey, conf.Auth.GoogleCX)
 	case "flickr":
 		log.Println("Using FLICKR")
 		Api = NewFlickrApi(conf.Auth.ApiKey, conf.WatcherConf.MinimalAviable)
@@ -63,10 +65,15 @@ func main(){
 	db, _ = ConnectDB(conf.DbPath)
 	defer db.Close()
 
+
+
 	Watcher = NewImgWatcher(db, conf.WatcherConf.MinimalAviable, conf.WatcherConf.MaximumUses, conf.WatcherConf.Checktime, conf.Debug)
 
-	router := gin.Default()
-
+	router := gin.New()
+	router.Use(
+		gin.LoggerWithWriter(log.StandardLogger().Writer()),
+		gin.Recovery(),
+	)
 
 	ImgDbs = make(map[string]ImgDB, len(conf.Endpoints))
 
