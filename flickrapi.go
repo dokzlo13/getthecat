@@ -65,11 +65,7 @@ func NewFlickrApi(key string, amount int) FlickrApi {
 
 
 func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
-	log.Println("Requesting seacrh for ", query)
-
-	log.Println("\n\n\n THISISNUMBER", strconv.Itoa(randrange(0, 100)), "\n\n\n")
-
-
+	log.Debugln("Flickr searching for ", query)
 	d, err := f.api.Request("photos.search",
 		 						flickr.Params{
 								//"text":query,
@@ -92,32 +88,26 @@ func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 	for _, pic := range resp.Photos.Photo {
 		var imgsizes []byte
 
-		log.Println("Requesting", pic.ID)
+		log.Traceln("Requesting", pic.ID)
 		imgsizes, err = f.api.Request("photos.getSizes", flickr.Params{"photo_id":pic.ID})
 		if err != nil {
-			log.Println("Error requesting ", pic.ID)
+			log.Traceln("Error requesting ", pic.ID)
 			continue
 		}
 		var imresp FlickrImagesResponse
 		err = json.Unmarshal(imgsizes, &imresp)
 		if err != nil {
-			log.Println("Error unmarshalling ", err, string(imgsizes))
+			log.Traceln("Error unmarshalling ", err, string(imgsizes))
 			continue
 		}
 
 		for _, imgsize := range imresp.Sizes.Size {
 			if imgsize.Label == "Large" {
 				imgs = append(imgs, ImgInfo{Origin:imgsize.Source})
-				log.Println("Extracted ", imgsize.Source)
+				log.Tracef("Extracted origin %s for \"%s\"", imgsize.Source, pic.ID)
 				break
 			}
 		}
-
 	}
 	return imgs, nil
 }
-
-//func main() {
-//	api := NewFlickrApi("b23bdd338a0bed0ab4ae109b340cb6df")
-//	log.Println(api.SearchImages("cat"))
-//}

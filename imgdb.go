@@ -23,7 +23,7 @@ func NewImgDB (searcher Searhcer, root string, prefix string) ImgDB {
 }
 
 func (db ImgDB) NewImgs(amount int) ([]ImgInfo, error) {
-	log.Printf("Starting collecting %d images...", amount)
+	log.Debugf("ImgDB start collecting \"%d\" images for prefix \"%s\"", amount, db.Prefix)
 	imgs, err := db.saver.SaveRandomPreparedImage(db.Api, db.Prefix, amount)
 	if err != nil {
 		return []ImgInfo{}, err

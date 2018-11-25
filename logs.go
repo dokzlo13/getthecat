@@ -43,6 +43,8 @@ func setupLogs(debuglvl int, logfile string) {
 	var writer *os.File
 	switch debuglvl {
 	case 0:
+		log.SetLevel(log.InfoLevel)
+
 		log.SetFormatter(&log.JSONFormatter{PrettyPrint:true, DisableTimestamp:false})
 		file, err := os.OpenFile(logfile, os.O_CREATE|os.O_WRONLY, 0666)
 		if err != nil {
@@ -64,6 +66,7 @@ func setupLogs(debuglvl int, logfile string) {
 			},
 		})
 	case 1:
+		log.SetLevel(log.DebugLevel)
 		log.SetFormatter(textFormatter)
 		log.AddHook(&WriterHook{
 			Writer: os.Stderr,
@@ -76,7 +79,23 @@ func setupLogs(debuglvl int, logfile string) {
 				log.DebugLevel,
 			},
 		})
-	case 2:
+	case 2 :
+		log.SetLevel(log.TraceLevel)
+		log.SetFormatter(textFormatter)
+		log.AddHook(&WriterHook{
+			Writer: os.Stderr,
+			LogLevels: []log.Level{
+				log.PanicLevel,
+				log.FatalLevel,
+				log.ErrorLevel,
+				log.WarnLevel,
+				log.InfoLevel,
+				log.DebugLevel,
+				log.TraceLevel,
+			},
+		})
+	case 3 :
+		log.SetLevel(log.TraceLevel)
 		log.SetFormatter(textFormatter)
 		log.AddHook(&WriterHook{
 			Writer: os.Stderr,
