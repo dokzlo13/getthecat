@@ -64,7 +64,7 @@ func NewFlickrApi(key string, amount int) FlickrApi {
 }
 
 
-func (f FlickrApi) SearchImages(query string) ([]string, error) {
+func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 	log.Println("Requesting seacrh for ", query)
 
 	log.Println("\n\n\n THISISNUMBER", strconv.Itoa(randrange(0, 100)), "\n\n\n")
@@ -78,16 +78,16 @@ func (f FlickrApi) SearchImages(query string) ([]string, error) {
 								"tags": query})
 
 	if err != nil {
-		return []string{}, nil
+		return []ImgInfo{}, err
 	}
 
 	var resp FlickrSearchResponse
 	err = json.Unmarshal(d, &resp)
 	if err != nil {
-		return []string{}, nil
+		return []ImgInfo{}, err
 	}
 
-	var imgs []string
+	var imgs []ImgInfo
 
 	for _, pic := range resp.Photos.Photo {
 		var imgsizes []byte
@@ -107,7 +107,7 @@ func (f FlickrApi) SearchImages(query string) ([]string, error) {
 
 		for _, imgsize := range imresp.Sizes.Size {
 			if imgsize.Label == "Large" {
-				imgs = append(imgs, imgsize.Source)
+				imgs = append(imgs, ImgInfo{Origin:imgsize.Source})
 				log.Println("Extracted ", imgsize.Source)
 				break
 			}

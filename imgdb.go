@@ -22,16 +22,11 @@ func NewImgDB (searcher Searhcer, root string, prefix string) ImgDB {
 	  			 saver:NewImageSaver(filepath.Join(root, prefix))}
 }
 
-func (db ImgDB) NewImgs(amount int) ([]string, error) {
+func (db ImgDB) NewImgs(amount int) ([]ImgInfo, error) {
 	log.Printf("Starting collecting %d images...", amount)
-	ids, err := db.saver.SaveRandomPreparedImage(db.Api, db.Prefix, amount)
+	imgs, err := db.saver.SaveRandomPreparedImage(db.Api, db.Prefix, amount)
 	if err != nil {
-		return []string{}, err
-	}
-
-	var imgs []string
-	for _, id := range ids {
-		imgs = append(imgs, db.saver.GetFilePath(id))
+		return []ImgInfo{}, err
 	}
 	return imgs, nil
 }

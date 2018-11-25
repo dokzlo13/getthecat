@@ -1,12 +1,16 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"github.com/disintegration/imaging"
 	"github.com/h2non/filetype"
 	"github.com/imroc/req"
 	"github.com/satori/go.uuid"
 	"log"
+	"image"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,32 +30,36 @@ func NewImageSaver(folder string) ImgSaver {
 	return ImgSaver{Folder:folder}
 }
 
-func (i ImgSaver) SaveRandomPreparedImage (searcher Searhcer, query string, amount int) ([]string, error) {
-	imgIds, err := i.SaveRandomImages(searcher, query, amount)
+func (i ImgSaver) SaveRandomPreparedImage (searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
+	imgRaw, err := i.SaveRandomImages(searcher, query, amount)
 	if err != nil {
-		return []string{}, err
+		return []ImgInfo{}, err
 	}
-	err = i.PreprocessImgs(imgIds)
+
+	log.Println("\n\nHERE IS IMAGES SAVED", imgRaw)
+	imgData, err := i.PreprocessImgs(imgRaw)
 	if err != nil {
-		return []string{}, err
+		return []ImgInfo{}, err
 	}
-	return imgIds, err
+	log.Println("\n\nHERE IS IMAGES PREPROCESSED", imgRaw)
+
+	return imgData, err
 }
 
 
-func (i ImgSaver) SaveRandomImages(searcher Searhcer, query string, amount int) ([]string, error) {
+func (i ImgSaver) SaveRandomImages(searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
 	var err error
-	log.Printf("Requesting google for \"%s\"", query)
+	log.Printf("Creating search for \"%s\"", query)
 	data, err := searcher.SearchImages(query)
 	if err != nil {
-		return []string{}, err
+		return []ImgInfo{}, err
 	}
-	var res []string
+	//var res []string
 	lng := len(data)
-	log.Printf("Request for google is sucessfull! collected:%d items", lng)
+	log.Printf("Request for seacrh is sucessfull! collected:%d items", lng)
 
 	for c:=0; c < amount && c < lng; c++{
-		url := data[c]
+		url := data[c].Origin
 		log.Print("Collecting img", url, "...")
 		r, _ := req.Get(url)
 		if err != nil {
@@ -61,17 +69,20 @@ func (i ImgSaver) SaveRandomImages(searcher Searhcer, query string, amount int) 
 			continue
 		}
 		id, _ := uuid.NewV4()
-		err = r.ToFile(filepath.Join(i.Folder, id.String()))
+		path := filepath.Join(i.Folder, id.String())
+
+		err = r.ToFile(path)
 		if err != nil {
 			continue
 		}
-		res = append(res, id.String())
+		data[c].Path = path
+		data[c].ID = id.String()
 		log.Println("DONE!")
 	}
-	if len(res) == 0 {
-		return []string{}, fmt.Errorf("No aviable images")
+	if len(data) == 0 {
+		return []ImgInfo{}, fmt.Errorf("No aviable images")
 	}
-	return res, nil
+	return data, nil
 }
 
 func (i ImgSaver) GetImage(id string) (*os.File, error) {
@@ -108,25 +119,78 @@ func (i ImgSaver)GetFilePath(id string) (string) {
 	return filepath.Join(i.Folder, id)
 }
 
-func (i ImgSaver)PreprocessImgs(ids []string) error {
+func getImageDimension(file *os.File) (int, int) {
+	image, _, err := image.DecodeConfig(file)
+	if err != nil {
+		log.Printf("Error collecting dimensions from image: %v\n", err)
+	}
+	return image.Width, image.Height
+}
+
+
+func md5Hash(file *os.File) (string, error) {
+	//Initialize variable returnMD5String now in case an error has to be returned
+	var returnMD5String string
+
+
+	//Open a new hash interface to write to
+	hash := md5.New()
+
+	//Copy the file in the hash interface and check for any error
+	if _, err := io.Copy(hash, file); err != nil {
+		return returnMD5String, err
+	}
+
+	//Get the 16 bytes hash
+	hashInBytes := hash.Sum(nil)[:16]
+
+	//Convert the bytes to a string
+	returnMD5String = hex.EncodeToString(hashInBytes)
+
+	return returnMD5String, nil
+
+}
+
+
+func (i ImgSaver)PreprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 	log.Println("Starting preprocessing images!")
-	for _, id := range ids {
-		descr, err := i.GetImage(id)
+
+	for idx, _ := range imgs {
+		descr, err := i.GetImage(imgs[idx].ID)
 		if err != nil {
-			return err
+			continue
+			//return err
 		}
 
 		img, err := imaging.Decode(descr)
 		if err != nil {
-			return err
+			continue
+			//return err
 		}
-		dstImage800 := imaging.Resize(img, 800, 0, imaging.Lanczos)
+		dstImage800 := imaging.Fit(img, 800, 600, imaging.Lanczos)
 		descr.Seek(0, 0)
 		err = imaging.Encode(descr, dstImage800, imaging.PNG)
 		if err != nil {
-			return err
+			continue
+			//return err
 		}
-		log.Printf("Image \"%s\" preprocessed!", id)
+		log.Printf("Image \"%s\" preprocessed!", imgs[idx].ID)
+
+		descr.Seek(0, 0)
+		imgs[idx].Width, imgs[idx].Height = getImageDimension(descr)
+
+		descr.Seek(0, 0)
+		checksum, err := md5Hash(descr)
+		if err != nil {
+			log.Printf("Error collecting md5 of img %s", imgs[idx].ID)
+		} else {
+			imgs[idx].Checksum = checksum
+		}
+
+		log.Println("IMAG INFOS", imgs[idx])
+
 	}
-	return nil
+	log.Println("IMAG INFOS", imgs)
+
+	return imgs, nil
 }
