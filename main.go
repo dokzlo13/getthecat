@@ -1,12 +1,13 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"math/rand"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -17,30 +18,49 @@ var (
 	)
 
 
-func ServeImg(ImgDB ImgDB) func(c *gin.Context) {
-	return func(c *gin.Context) {
-		img := Watcher.GetImg(ImgDB)
-		f, _ := os.Open(img)
-		fi, err := f.Stat()
-		if err != nil {
-			// Could not obtain stat, handle error
-		}
-		//extraHeaders := map[string]string{
-		//	"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s.png\"", ImgDB.Prefix),
-		//}
-		//c.DataFromReader(http.StatusOK, fi.Size(), "image/png", f, extraHeaders)
-		c.DataFromReader(http.StatusOK, fi.Size(), "image/png", f, map[string]string{})
+func ServeStaticImg(ImgDB ImgDB, mode string) func(c *gin.Context) {
+	var extraHeaders map[string]string
+	switch mode {
+	case "image":
+		extraHeaders = map[string]string{
+				"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s.png\"", ImgDB.Prefix),
+			}
+	case "attachment":
+		extraHeaders = map[string]string{}
+	}
 
+	return func(c *gin.Context) {
+		img, err := Watcher.GetRandomImgReader(ImgDB)
+		if err != nil {
+			log.Errorf("Error opening file %v, %v", img, err)
+			c.AbortWithError(502, err)
+			// Could not obtain stat, handle error
+			return
+		}
+		if img == nil {
+			log.Errorf("Empty file %v, %v", img, err)
+			c.AbortWithError(502, err)
+			return
+		}
+		fi, err := img.Stat()
+		if err != nil {
+			log.Errorf("Error collecting stats for file %v, %v", img, err)
+			c.AbortWithError(502, err)
+			// Could not obtain stat, handle error
+			return
+		}
+		c.DataFromReader(http.StatusOK, fi.Size(), "image/png", img, extraHeaders)
+		return
 	}
 }
 
 func main(){
 	rand.Seed(time.Now().Unix())
+	configpath := flag.String("conf", "config.yaml", "Config file for server")
+	flag.Parse()
 
-	configpath := "config2.yaml"
 
-
-	conf, err := LoadConfig(configpath)
+	conf, err := LoadConfig(*configpath)
 	if err != nil {
 		log.Fatalln("Error reading conf")
 	}
@@ -56,16 +76,12 @@ func main(){
 	case "flickr":
 		log.Println("Using FLICKR")
 		Api = NewFlickrApi(conf.Auth.ApiKey, conf.WatcherConf.MinimalAviable)
+	default:
+		log.Fatalf("Wrong engine \"%s\" for GetTheCat", conf.Mode)
 	}
-
-	//DogImg = NewImgDB(Api, conf.ImgFolder, "dog")
-	//CatImg = NewImgDB(Api, conf.ImgFolder, "cat")
-	//ParrotImg = NewImgDB(Api, conf.ImgFolder, "parrot")
 
 	db, _ = ConnectDB(conf.DbPath)
 	defer db.Close()
-
-
 
 	Watcher = NewImgWatcher(db, conf.WatcherConf.MinimalAviable, conf.WatcherConf.MaximumUses, conf.WatcherConf.Checktime, conf.Debug)
 
@@ -75,13 +91,17 @@ func main(){
 		gin.Recovery(),
 	)
 
+
+	//var ServeFunction func(c *gin.Context)
+
+
 	ImgDbs = make(map[string]ImgDB, len(conf.Endpoints))
 
 	for _, endpoint := range conf.Endpoints {
 		log.Printf("Initalizing serve for \"%s\"", endpoint)
 		ImgDbs[endpoint] = NewImgDB(Api, conf.ImgFolder, endpoint)
 		go Watcher.WatchImages(ImgDbs[endpoint])
-		router.GET("/" + endpoint, ServeImg(ImgDbs[endpoint]))
+		router.GET("/" + endpoint, ServeStaticImg(ImgDbs[endpoint], conf.ServingConf.ServingType))
 	}
 
 

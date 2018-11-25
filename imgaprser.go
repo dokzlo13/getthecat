@@ -204,6 +204,5 @@ func (i ImgSaver)PreprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 		log.Debugf("Image \"%s\" preprocessed!", imgs[idx].ID)
 	}
 
-	log.Warningln(results)
 	return imgs, nil
 }

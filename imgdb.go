@@ -2,9 +2,7 @@ package main
 
 import (
 	log "github.com/sirupsen/logrus"
-	"fmt"
-	"io/ioutil"
-	"math/rand"
+	"os"
 	"path/filepath"
 )
 
@@ -31,21 +29,6 @@ func (db ImgDB) NewImgs(amount int) ([]ImgInfo, error) {
 	return imgs, nil
 }
 
-func (db ImgDB) RandLocalImg() (string, error) {
-	files, err := ioutil.ReadDir(filepath.Join(db.Root, db.Prefix))
-	if err != nil {
-		return "", err
-	}
-	if len(files) < 1 {
-		return "", fmt.Errorf("Empty files list")
-	}
-	filename := files[rand.Intn(len(files))].Name()
-	if filename == "" {
-		return "", fmt.Errorf("Empty files list")
-	}
-	return filepath.Join(db.Root, db.Prefix, filename), nil
-}
-
-func (db ImgDB) LocalImg(id string) string {
-	return db.saver.GetFilePath(id)
+func (db ImgDB) LocalImg(id string) (*os.File, error) {
+	return db.saver.GetImage(id)
 }

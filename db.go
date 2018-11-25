@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	log "github.com/sirupsen/logrus"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
@@ -18,14 +19,15 @@ type ImgWatcher struct {
 
 
 func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
+	log.Warningf("Watcher task started for prefix \"%s\"", ImgDB.Prefix)
 	for {
 		var count int
-
 		ag.DB.Model(&ImgInfo{}).Where("uses < ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Count(&count)
-		log.Printf("Explored %d aviable images for prefix \"%s\"", count, ImgDB.Prefix)
+		log.Debugf("Explored %d aviable images local for prefix \"%s\"", count, ImgDB.Prefix)
 		if count < ag.MinimalAviable {
+			log.Debugf("DB Watcher detect %d aviable items of expected %d for prefix \"%s\" starting collection task", count, ag.MinimalAviable, ImgDB.Prefix)
 			items, err := ImgDB.NewImgs(ag.MinimalAviable - count)
-			log.Println("\n\nHERE IS IMAGES IN GOROUTINE", items)
+			log.Debugf("DB recieve %d new items from ImgParser", len(items))
 
 			if err != nil {
 				log.Printf("Error collecting images: \"%s\"", err)
@@ -44,25 +46,45 @@ func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
 	}
 }
 
-func (ag ImgWatcher) GetImg(ImgDB ImgDB) string {
+func (ag ImgWatcher) GetRandomImgPath(ImgDB ImgDB) string {
 	var img ImgInfo
-	ag.DB.Where("uses < ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Order("uses ASC").First(&img)
+	tx := ag.DB.Begin()
+	tx.Where("uses < ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Order("uses ASC").First(&img)
 	if img.ID == "" {
 		//If no unused cat - respond used
-		ag.DB.Where("uses >= ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Order("uses ASC").First(&img)
+		tx.Where("uses >= ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Order("uses ASC").First(&img)
 	}
 	if img.ID == "" {
 		return ""
 	}
 	img.Uses ++
-	ag.DB.Model(&ImgInfo{}).Update(&img)
+	tx.Model(&ImgInfo{}).Update(&img)
+	tx.Commit()
 	return img.Path
 }
 
+func (ag ImgWatcher) GetRandomImgReader(ImgDB ImgDB) (*os.File, error) {
+	var img ImgInfo
+	tx := ag.DB.Begin()
+	tx.Where("uses < ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Order("uses ASC").First(&img)
+	if img.ID == "" {
+		//If no unused cat - respond used
+		tx.Where("uses >= ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Order("uses ASC").First(&img)
+	}
+	if img.ID == "" {
+		return nil, fmt.Errorf("No file with this ID.")
+	}
+	img.Uses ++
+	tx.Model(&ImgInfo{}).Update(&img)
+	tx.Commit()
+	return ImgDB.LocalImg(img.ID)
+}
+
+
 func NewImgWatcher(db *gorm.DB, minimalAviable int,  maximalUses int, checktime int, debug int) ImgWatcher {
-	if debug == 2 {
+	if debug == 3 {
 		db = db.Debug()
-		db.SetLogger(log.StandardLogger())
+		//db.SetLogger(log.StandardLogger())
 	}
 	return ImgWatcher{DB: db, MinimalAviable:minimalAviable, MaximalUses:maximalUses, renew:checktime}
 }
