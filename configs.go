@@ -16,6 +16,10 @@ type WatcherConf struct {
 	MaximumUses int `json:"maximal_uses"`
 	Checktime int `json:"checktime"`
 	CollectingMode string `json:"collect"`
+	Cache struct{
+		Addr string `json:"addr"`
+		RedisDb int `json:"db"`
+	} `json:"cache"`
 }
 
 type Config struct {
