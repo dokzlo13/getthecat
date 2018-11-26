@@ -21,8 +21,17 @@ func NewImgDB (searcher Searhcer, root string, prefix string) ImgDB {
 }
 
 func (db ImgDB) NewImgs(amount int) ([]ImgInfo, error) {
-	log.Debugf("[ImgDB] Starting collecting \"%d\" images for prefix \"%s\"", amount, db.Prefix)
-	imgs, err := db.saver.SaveRandomPreparedImage(db.Api, db.Prefix, amount)
+	log.Debugf("[ImgDB] Starting collecting Files for \"%d\" images for prefix \"%s\"", amount, db.Prefix)
+	imgs, err := db.saver.GetImagesFiles(db.Api, db.Prefix, amount)
+	if err != nil {
+		return []ImgInfo{}, err
+	}
+	return imgs, nil
+}
+
+func (db ImgDB) NewUrls(amount int) ([]ImgInfo, error) {
+	log.Debugf("[ImgDB] Starting collecting URLS-ONLY of \"%d\" images for prefix \"%s\"", amount, db.Prefix)
+	imgs, err := db.saver.GetImagesUrls(db.Api, db.Prefix, amount)
 	if err != nil {
 		return []ImgInfo{}, err
 	}

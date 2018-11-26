@@ -15,6 +15,7 @@ type ImgWatcher struct {
 	renew int
 	MinimalAviable int
 	MaximalUses int
+	CollectingMode string
 }
 
 
@@ -26,7 +27,20 @@ func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
 		log.Debugf("[Watcher] Explored %d aviable images local for prefix \"%s\"", count, ImgDB.Prefix)
 		if count < ag.MinimalAviable {
 			log.Debugf("[Watcher] DB Watcher detect %d aviable items of expected %d for prefix \"%s\" starting collection task", count, ag.MinimalAviable, ImgDB.Prefix)
-			items, err := ImgDB.NewImgs(ag.MinimalAviable - count)
+
+			var (
+				items []ImgInfo
+				err error
+			)
+			switch ag.CollectingMode {
+			case "urls":
+				items, err = ImgDB.NewUrls(ag.MinimalAviable - count)
+			case "files":
+				items, err = ImgDB.NewImgs(ag.MinimalAviable - count)
+			default:
+				log.Fatalf("Watcher found unknown collection mode \"%s\"", ag.CollectingMode)
+			}
+
 			log.Debugf("[Watcher] DB recieve %d new items from ImgParser", len(items))
 
 			if err != nil {
@@ -106,12 +120,16 @@ func (ag ImgWatcher) GetFile(imgDB ImgDB, id string) (*os.File, error) {
 	return ImgDB.GetImage(imgDB, id)
 }
 
-func NewImgWatcher(db *gorm.DB, minimalAviable int,  maximalUses int, checktime int, debug int) ImgWatcher {
-	if debug == 3 {
+func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
+	if  debug == 3 {
 		db = db.Debug()
 		//db.SetLogger(log.StandardLogger())
 	}
-	return ImgWatcher{DB: db, MinimalAviable:minimalAviable, MaximalUses:maximalUses, renew:checktime}
+	return ImgWatcher{DB: db,
+					  MinimalAviable:conf.MinimalAviable,
+	  				  MaximalUses:conf.MaximumUses,
+					  renew:conf.Checktime,
+					  CollectingMode:conf.CollectingMode}
 }
 
 

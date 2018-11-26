@@ -30,14 +30,14 @@ func NewImageSaver(folder string) ImgSaver {
 	return ImgSaver{Folder:folder}
 }
 
-func (i ImgSaver) SaveRandomPreparedImage (searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
-	imgRaw, err := i.SaveRandomImages(searcher, query, amount)
+func (i ImgSaver) GetImagesFiles(searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
+	imgRaw, err := i.saveRandomImages(searcher, query, amount)
 	if err != nil {
 		return []ImgInfo{}, err
 	}
 
 	log.Tracef("[ImgParser] Saved %d images for query %s", len(imgRaw), query)
-	imgData, err := i.PreprocessImgs(imgRaw)
+	imgData, err := i.preprocessImgs(imgRaw)
 	if err != nil {
 		return []ImgInfo{}, err
 	}
@@ -46,8 +46,31 @@ func (i ImgSaver) SaveRandomPreparedImage (searcher Searhcer, query string, amou
 	return imgData, err
 }
 
+func (i ImgSaver) GetImagesUrls(searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
+	var err error
+	log.Tracef("[ImgSaver] Creating search for \"%s\"", query)
+	data, err := searcher.SearchImages(query)
+	if err != nil {
+		return []ImgInfo{}, err
+	}
+	lng := len(data)
+	log.Tracef("[ImgSaver] Request for seacrh is sucessfull! collected:%d items", lng)
+	var results []ImgInfo
+	for c:=0; c < amount && c < lng; c++{
+		url := data[c].Origin
+		id, _ := uuid.NewV4()
+		data[c].ID = id.String()
+		log.Debugf("[ImgSaver] Collecting img ORIGINS %s SUCEED", url)
+		results = append(results, data[c])
+	}
+	if len(results) == 0 {
+		return []ImgInfo{}, fmt.Errorf("No aviable images")
+	}
+	return results, nil
+}
 
-func (i ImgSaver) SaveRandomImages(searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
+
+func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
 	var err error
 	log.Tracef("[ImgSaver] Creating search for \"%s\"", query)
 	data, err := searcher.SearchImages(query)
@@ -121,9 +144,6 @@ func (i ImgSaver) GetImage(id string) (*os.File, error) {
 
 }
 
-func (i ImgSaver)GetFilePath(id string) (string) {
-	return filepath.Join(i.Folder, id)
-}
 
 func getImageDimension(file *os.File) (int, int) {
 	image, _, err := image.DecodeConfig(file)
@@ -158,7 +178,7 @@ func md5Hash(file *os.File) (string, error) {
 }
 
 
-func (i ImgSaver)PreprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
+func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 	log.Trace("[Preprocess] Starting preprocessing images!")
 
 	var results []ImgInfo

@@ -18,47 +18,64 @@ var (
 	)
 
 
-func ServeStaticImg(ImgDB ImgDB, mode string) func(c *gin.Context) {
+func ServeStaticImg(ImgDB ImgDB, conf ServingConf) func(c *gin.Context) {
 	var extraHeaders map[string]string
-	switch mode {
-	case "image":
+	switch conf.Filetype {
+	case "attachment":
 		extraHeaders = map[string]string{
 				"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s.png\"", ImgDB.Prefix),
 			}
-	case "attachment":
+	case "image":
 		extraHeaders = map[string]string{}
 	}
 
-	return func(c *gin.Context) {
-		imginfo, err := Watcher.GetImg(ImgDB)
-		if err != nil {
-			log.Errorf("No aviable file found with err \"%v\"", err)
-			c.AbortWithError(404, err)
-			return
-		}
+	var responder func(c *gin.Context)
 
-		img, err := Watcher.GetFile(ImgDB, imginfo.ID)
-		if err != nil {
-			log.Errorf("Error opening file %v, %v", img, err)
-			c.AbortWithError(502, err)
-			return
-		}
+	switch conf.Mode {
+	case "cache":
+		responder = func(c *gin.Context) {
+			imginfo, err := Watcher.GetImg(ImgDB)
+			if err != nil {
+				log.Errorf("No aviable file found with err \"%v\"", err)
+				c.AbortWithError(404, err)
+				return
+			}
 
-		if img == nil {
-			log.Errorf("Empty file %v, %v", img, err)
-			c.AbortWithError(502, err)
-			return
+			img, err := Watcher.GetFile(ImgDB, imginfo.ID)
+			if err != nil {
+				log.Errorf("Error opening file %v, %v", img, err)
+				c.AbortWithError(502, err)
+				return
+			}
+
+			if img == nil {
+				log.Errorf("Empty file %v, %v", img, err)
+				c.AbortWithError(502, err)
+				return
+			}
+			c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, extraHeaders)
 		}
-		c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, extraHeaders)
-		return
+	case "proxy":
+		responder = func(c *gin.Context) {
+			imginfo, err := Watcher.GetImg(ImgDB)
+			if err != nil {
+				log.Errorf("No aviable file found with err \"%v\"", err)
+				c.AbortWithError(404, err)
+				return
+			}
+			c.Redirect(303, imginfo.Origin)
+		}
 	}
+
+	return responder
 }
 
 func main(){
+	var Api Searhcer
+
 	rand.Seed(time.Now().Unix())
 	configpath := flag.String("conf", "config.yaml", "Config file for server")
 	flag.Parse()
-
 
 	conf, err := LoadConfig(*configpath)
 	if err != nil {
@@ -66,8 +83,6 @@ func main(){
 	}
 
 	setupLogs(conf.Debug, conf.Logfile)
-
-	var Api Searhcer
 
 	switch conf.Mode {
 	//case "google":
@@ -83,7 +98,7 @@ func main(){
 	db, _ = ConnectDB(conf.DbPath)
 	defer db.Close()
 
-	Watcher = NewImgWatcher(db, conf.WatcherConf.MinimalAviable, conf.WatcherConf.MaximumUses, conf.WatcherConf.Checktime, conf.Debug)
+	Watcher = NewImgWatcher(db, conf.WatcherConf, conf.Debug)
 
 	router := gin.New()
 	router.Use(
@@ -91,20 +106,15 @@ func main(){
 		gin.Recovery(),
 	)
 
-
-	//var ServeFunction func(c *gin.Context)
-
-
 	ImgDbs = make(map[string]ImgDB, len(conf.Endpoints))
 
 	for _, endpoint := range conf.Endpoints {
 		log.Printf("Initalizing serve for \"%s\"", endpoint)
 		ImgDbs[endpoint] = NewImgDB(Api, conf.ImgFolder, endpoint)
 		go Watcher.WatchImages(ImgDbs[endpoint])
-		router.GET("/" + endpoint, ServeStaticImg(ImgDbs[endpoint], conf.ServingConf.ServingType))
+		router.GET("/" + endpoint, ServeStaticImg(ImgDbs[endpoint], conf.ServingConf))
 	}
 
-	log.Warningln(ImgDbs)
 	router.Run("0.0.0.0:8080")
 
 }
