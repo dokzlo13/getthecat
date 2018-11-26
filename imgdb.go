@@ -21,7 +21,7 @@ func NewImgDB (searcher Searhcer, root string, prefix string) ImgDB {
 }
 
 func (db ImgDB) NewImgs(amount int) ([]ImgInfo, error) {
-	log.Debugf("ImgDB start collecting \"%d\" images for prefix \"%s\"", amount, db.Prefix)
+	log.Debugf("[ImgDB] Starting collecting \"%d\" images for prefix \"%s\"", amount, db.Prefix)
 	imgs, err := db.saver.SaveRandomPreparedImage(db.Api, db.Prefix, amount)
 	if err != nil {
 		return []ImgInfo{}, err
@@ -29,6 +29,6 @@ func (db ImgDB) NewImgs(amount int) ([]ImgInfo, error) {
 	return imgs, nil
 }
 
-func (db ImgDB) LocalImg(id string) (*os.File, error) {
+func (db ImgDB) GetImage(id string) (*os.File, error) {
 	return db.saver.GetImage(id)
 }

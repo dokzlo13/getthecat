@@ -30,26 +30,26 @@ func ServeStaticImg(ImgDB ImgDB, mode string) func(c *gin.Context) {
 	}
 
 	return func(c *gin.Context) {
-		img, err := Watcher.GetRandomImgReader(ImgDB)
+		imginfo, err := Watcher.GetImg(ImgDB)
+		if err != nil {
+			log.Errorf("No aviable file found with err \"%v\"", err)
+			c.AbortWithError(404, err)
+			return
+		}
+
+		img, err := Watcher.GetFile(ImgDB, imginfo.ID)
 		if err != nil {
 			log.Errorf("Error opening file %v, %v", img, err)
 			c.AbortWithError(502, err)
-			// Could not obtain stat, handle error
 			return
 		}
+
 		if img == nil {
 			log.Errorf("Empty file %v, %v", img, err)
 			c.AbortWithError(502, err)
 			return
 		}
-		fi, err := img.Stat()
-		if err != nil {
-			log.Errorf("Error collecting stats for file %v, %v", img, err)
-			c.AbortWithError(502, err)
-			// Could not obtain stat, handle error
-			return
-		}
-		c.DataFromReader(http.StatusOK, fi.Size(), "image/png", img, extraHeaders)
+		c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, extraHeaders)
 		return
 	}
 }
@@ -104,7 +104,7 @@ func main(){
 		router.GET("/" + endpoint, ServeStaticImg(ImgDbs[endpoint], conf.ServingConf.ServingType))
 	}
 
-
+	log.Warningln(ImgDbs)
 	router.Run("0.0.0.0:8080")
 
 }
