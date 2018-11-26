@@ -79,7 +79,7 @@ func main(){
 
 	conf, err := LoadConfig(*configpath)
 	if err != nil {
-		log.Fatalln("Error reading conf")
+		log.Fatalf("Error Loading config-file: \"%s\"", err)
 	}
 
 	setupLogs(conf.Debug, conf.Logfile)

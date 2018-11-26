@@ -21,6 +21,14 @@ type ImgWatcher struct {
 
 func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
 	log.Warningf("Watcher task started for prefix \"%s\"", ImgDB.Prefix)
+
+
+	if ag.CollectingMode != "urls"{
+		var count int
+		ag.DB.Where("type = ? AND (path = '' OR filesize = '0')", ImgDB.Prefix).Delete(&ImgInfo{}).Count(&count)
+		log.Warningf("Removed values with empty filepaths from DB for prefix \"%s\"", ImgDB.Prefix)
+	}
+
 	for {
 		var count int
 		ag.DB.Model(&ImgInfo{}).Where("uses < ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Count(&count)
@@ -38,7 +46,7 @@ func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
 			case "files":
 				items, err = ImgDB.NewImgs(ag.MinimalAviable - count)
 			default:
-				log.Fatalf("Watcher found unknown collection mode \"%s\"", ag.CollectingMode)
+				log.Fatalf("[Watcher] found unknown collection mode \"%s\"", ag.CollectingMode)
 			}
 
 			log.Debugf("[Watcher] DB recieve %d new items from ImgParser", len(items))

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/micro/go-config"
 	"github.com/micro/go-config/source/file"
 )
@@ -23,7 +24,7 @@ type Config struct {
 		GoogleCX string `json:"cx"`
 	} `json:"auth"`
 	WatcherConf WatcherConf `json:"watcher"`
-	ServingConf ServingConf `json:"serving"`
+	ServingConf ServingConf `json:"server"`
 	ImgFolder string `json:"folder"`
 	DbPath string `json:"db"`
 	Debug int `json:"debug"`
@@ -31,6 +32,26 @@ type Config struct {
 	Endpoints []string `json:"endpoints"`
 	Logfile string `json:"logfile"`
 }
+
+func ConfigCheck(conf Config) error {
+	if !(conf.WatcherConf.CollectingMode == "urls" || conf.WatcherConf.CollectingMode == "files") {
+		return fmt.Errorf("Config invalid argument \"%s\" for \"watcher.mode\"", conf.WatcherConf.CollectingMode)
+	}
+
+	if !(conf.ServingConf.Mode == "cache" || conf.ServingConf.Mode == "proxy") {
+		return fmt.Errorf("Config invalid argument \"%s\" for \"server.mode\"", conf.ServingConf.Mode)
+	}
+
+	if !(conf.ServingConf.Filetype == "image" || conf.ServingConf.Filetype == "attachment") {
+		return fmt.Errorf("Config invalid argument \"%s\" for \"server.mode\"", conf.ServingConf.Filetype)
+	}
+
+	if conf.WatcherConf.CollectingMode == "urls" && conf.ServingConf.Mode == "cache" {
+		return fmt.Errorf("Config conflict for values \"server\" and \"watcher\"")
+	}
+	return nil
+}
+
 
 func LoadConfig(path string) (Config, error) {
 	var conf Config
@@ -41,5 +62,5 @@ func LoadConfig(path string) (Config, error) {
 		return conf, err
 	}
 	config.Scan(&conf)
-	return conf, nil
+	return conf, ConfigCheck(conf)
 }
