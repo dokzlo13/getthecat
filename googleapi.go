@@ -1,9 +1,9 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
 	"fmt"
 	"github.com/imroc/req"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"time"
 )
@@ -100,27 +100,31 @@ func randrange(min, max int) int {
 	return rand.Intn(max - min) + min
 }
 
-func (g GoogleAPI) SearchImages(query string) ([]string, error) {
+func (g GoogleAPI) SearchImages(query string) ([]ImgInfo, error) {
 	rnd := randrange(5, 20)
+	log.Tracef("[GoogleApi] Sending to google: query:\"%s\" page:\"%d\"", query, rnd)
 	resp, err := req.Get(g.apiUrl, g.params, req.Param{"q":query,
 	"filter":"1",
 	"lowRange":rnd-5,
 	"highRange":rnd,
 	})
 	if err != nil {
-		return []string{}, err
+		log.Infof("[GoogleApi] error requesting google: %v", err)
+		return []ImgInfo{}, err
 	}
-	log.Println(resp.String())
+	log.Tracef("[GoogleApi] Google respond: %d", resp.Response().StatusCode)
+
 	var jsonData GoogleResponse
 	resp.ToJSON(&jsonData)
 
 	if len(jsonData.Error.Errors) > 0 {
-		return []string{}, fmt.Errorf(jsonData.Error.Errors[0].Reason)
+		log.Infof("[GoogleApi] Google respond error: %s", jsonData.Error.Errors[0].Reason)
+		return []ImgInfo{}, fmt.Errorf(jsonData.Error.Errors[0].Reason)
 	}
 
-	var imgUrls []string
+	var imgUrls []ImgInfo
 	for _, itm := range jsonData.Items{
-		imgUrls = append(imgUrls, itm.Link)
+		imgUrls = append(imgUrls, ImgInfo{Origin:itm.Link, Width:itm.Image.Width, Height:itm.Image.Height})
 	}
 
 	return imgUrls, nil

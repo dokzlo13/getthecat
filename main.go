@@ -85,9 +85,9 @@ func main(){
 	setupLogs(conf.Debug, conf.Logfile)
 
 	switch conf.Mode {
-	//case "google":
-	//	log.Println("Using GOOGLE")
-	//	Api = NewGoogleAPI(conf.Auth.ApiKey, conf.Auth.GoogleCX)
+	case "google":
+		log.Println("Using GOOGLE")
+		Api = NewGoogleAPI(conf.Auth.ApiKey, conf.Auth.GoogleCX)
 	case "flickr":
 		log.Println("Using FLICKR")
 		Api = NewFlickrApi(conf.Auth.ApiKey, conf.WatcherConf.MinimalAviable)
