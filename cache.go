@@ -35,19 +35,24 @@ func (c Cache) Set (prefix string, item ImgInfo) error {
 		log.Infof("[Cache] Error marshalling item %s in cache", item.ID)
 		return err
 	}
-	err = c.client.ZAdd(prefix, redis.Z{Member:b, Score:float64(item.Uses)}).Err()
+
+	err = c.client.HSet(prefix, item.ID, b).Err()
 	if err != nil {
 		log.Infof("[Cache] Error saving item %s in cache", item.ID)
+	}
+
+	err = c.client.ZAdd(prefix + "_index", redis.Z{Member:item.ID, Score:float64(item.Uses)}).Err()
+	if err != nil {
+		log.Infof("[Cache] Error saving index %s in cache", item.ID)
 	}
 	return err
 
 }
 
-func (c Cache) GetAviable (prefix string) (ImgInfo, error) {
-	var item ImgInfo
+func (c Cache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
 	var err error
 
-	val, err := c.client.ZRangeByScore(prefix, redis.ZRangeBy{
+	val, err := c.client.ZRangeByScore(prefix + "_index", redis.ZRangeBy{
 		Min: "-inf",
 		Max: "+inf",
 		Offset: 0,
@@ -59,27 +64,47 @@ func (c Cache) GetAviable (prefix string) (ImgInfo, error) {
 	}
 
 	if len(val) < 1 {
-		log.Infoln("[Cache] Empty cache results")
+		log.Infoln("[Cache] Empty index results")
 		return ImgInfo{}, fmt.Errorf("Empty set")
 	}
 
-	b := []byte(val[0])
-	err = msgpack.Unmarshal(b, &item)
+	//b := []byte(val[0])
+
+	return c.GetById(prefix, val[0], increment)
+
+}
+
+
+func (c Cache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
+	var item ImgInfo
+	var err error
+
+	itemdata, err := c.client.HGet(prefix, id).Result()
 	if err != nil {
-		log.Infof("[Cache] Error unmarshalling %x... from cache", b[:10])
+		log.Infof("[Cache] Error collecting item %s from cache", item.ID)
 		return ImgInfo{}, err
 	}
 
-	err = c.client.ZIncrBy(prefix, 1, val[0]).Err()
-	if err != nil {
-		log.Infof("[Cache] Error incrementing item %s in cache", item.ID)
-		return ImgInfo{}, err
+	if itemdata == "" {
+		log.Infoln("[Cache] Empty data results")
+		return ImgInfo{}, fmt.Errorf("Empty set")
 	}
 
+	err = msgpack.Unmarshal([]byte(itemdata), &item)
+	if err != nil {
+		log.Infof("[Cache] Error unmarshalling %x... from cache", itemdata[:10])
+		return ImgInfo{}, err
+	}
+	if increment {
+		err = c.client.ZIncrBy(prefix + "_index", 1, id).Err()
+		if err != nil {
+			log.Infof("[Cache] Error incrementing index %s in cache", item.ID)
+			return ImgInfo{}, err
+		}
+	}
 	log.Tracef("[Cache] Item unmarshalled from cache %s", item.ID)
 	return item, nil
 }
-
 
 //func ExampleMarshal() {
 //	type Item struct {
