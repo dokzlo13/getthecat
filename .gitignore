@@ -10,3 +10,7 @@ CatAPI
 *.db
 
 *.log
+
+*.db-shm
+
+*.db-wal

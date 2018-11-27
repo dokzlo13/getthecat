@@ -13,35 +13,51 @@ import (
 
 var (
 	Watcher ImgWatcher
-	ImgDbs  map[string]ImgDB
+	//ImgDbs  map[string]ImgDB
 	db *gorm.DB
 	)
 
-
-func ServeStaticImg(ImgDB ImgDB, conf ServingConf) func(c *gin.Context) {
+func setHeaders(filetype string, prefix string) map[string]string {
 	var extraHeaders map[string]string
-	switch conf.Filetype {
+	switch filetype {
 	case "attachment":
 		extraHeaders = map[string]string{
-				"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s.png\"", ImgDB.Prefix),
-			}
+			"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s.png\"", prefix),
+		}
 	case "image":
 		extraHeaders = map[string]string{}
 	}
+	return extraHeaders
 
+}
+
+
+func ServeImgInfo(prefix string) func(c *gin.Context) {
+	return func(c *gin.Context) {
+		imginfo, err := Watcher.GetImg(prefix, false)
+		if err != nil {
+			log.Errorf("No aviable file found with err \"%v\"", err)
+			c.AbortWithError(404, err)
+			return
+		}
+		c.JSON(200, imginfo)
+	}
+}
+
+func ServeImg(prefix string, conf ServingConf) func(c *gin.Context) {
+	headers := setHeaders(conf.Filetype, prefix)
 	var responder func(c *gin.Context)
-
 	switch conf.Mode {
 	case "cache":
 		responder = func(c *gin.Context) {
-			imginfo, err := Watcher.GetImg(ImgDB)
+			imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), true)
 			if err != nil {
-				log.Errorf("No aviable file found with err \"%v\"", err)
+				log.Errorf("No requested file found with err \"%v\"", err)
 				c.AbortWithError(404, err)
 				return
 			}
 
-			img, err := Watcher.GetFile(ImgDB, imginfo.ID)
+			img, err := Watcher.GetFile(prefix, imginfo.ID)
 			if err != nil {
 				log.Errorf("Error opening file %v, %v", img, err)
 				c.AbortWithError(502, err)
@@ -53,11 +69,11 @@ func ServeStaticImg(ImgDB ImgDB, conf ServingConf) func(c *gin.Context) {
 				c.AbortWithError(502, err)
 				return
 			}
-			c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, extraHeaders)
+			c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, headers)
 		}
 	case "proxy":
 		responder = func(c *gin.Context) {
-			imginfo, err := Watcher.GetImg(ImgDB)
+			imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), true)
 			if err != nil {
 				log.Errorf("No aviable file found with err \"%v\"", err)
 				c.AbortWithError(404, err)
@@ -69,6 +85,49 @@ func ServeStaticImg(ImgDB ImgDB, conf ServingConf) func(c *gin.Context) {
 
 	return responder
 }
+
+func ServeRandomImg(prefix string, conf ServingConf) func(c *gin.Context) {
+	headers := setHeaders(conf.Filetype, prefix)
+	var responder func(c *gin.Context)
+	switch conf.Mode {
+	case "cache":
+		responder = func(c *gin.Context) {
+			imginfo, err := Watcher.GetImg(prefix, true)
+			if err != nil {
+				log.Errorf("No aviable file found with err \"%v\"", err)
+				c.AbortWithError(404, err)
+				return
+			}
+
+			img, err := Watcher.GetFile(prefix, imginfo.ID)
+			if err != nil {
+				log.Errorf("Error opening file %v, %v", img, err)
+				c.AbortWithError(502, err)
+				return
+			}
+
+			if img == nil {
+				log.Errorf("Empty file %v, %v", img, err)
+				c.AbortWithError(502, err)
+				return
+			}
+			c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, headers)
+		}
+	case "proxy":
+		responder = func(c *gin.Context) {
+			imginfo, err := Watcher.GetImg(prefix, true)
+			if err != nil {
+				log.Errorf("No aviable file found with err \"%v\"", err)
+				c.AbortWithError(404, err)
+				return
+			}
+			c.Redirect(303, imginfo.Origin)
+		}
+	}
+
+	return responder
+}
+
 
 func main(){
 	var Api Searhcer
@@ -86,10 +145,10 @@ func main(){
 
 	switch conf.Mode {
 	case "google":
-		log.Println("Using GOOGLE")
+		log.Warningln("Using GOOGLE")
 		Api = NewGoogleAPI(conf.Auth.ApiKey, conf.Auth.GoogleCX)
 	case "flickr":
-		log.Println("Using FLICKR")
+		log.Warningln("Using FLICKR")
 		Api = NewFlickrApi(conf.Auth.ApiKey, conf.WatcherConf.MinimalAviable)
 	default:
 		log.Fatalf("Wrong engine \"%s\" for GetTheCat", conf.Mode)
@@ -106,15 +165,21 @@ func main(){
 		gin.Recovery(),
 	)
 
-	ImgDbs = make(map[string]ImgDB, len(conf.Endpoints))
+	//ImgDbs = make(map[string]ImgDB, len(conf.Endpoints))
 
 	for _, endpoint := range conf.Endpoints {
 		log.Printf("Initalizing serve for \"%s\"", endpoint)
-		ImgDbs[endpoint] = NewImgDB(Api, conf.ImgFolder, endpoint)
-		go Watcher.WatchImages(ImgDbs[endpoint])
-		router.GET("/" + endpoint, ServeStaticImg(ImgDbs[endpoint], conf.ServingConf))
+		//ImgDbs[endpoint] =
+		Imdb := NewImgDB(Api, conf.ImgFolder, endpoint)
+		go Watcher.WatchImages(Imdb)
+		router.GET("/" + endpoint + "/img", ServeRandomImg(endpoint, conf.ServingConf))
+		router.GET("/" + endpoint + "/rand", ServeImgInfo(endpoint))
+		router.GET("/" + endpoint + "/img/:id", ServeImg(endpoint, conf.ServingConf))
+
+
 	}
 
+	log.Warningln(Watcher.ImgDBs)
 	router.Run("0.0.0.0:8080")
 
 }

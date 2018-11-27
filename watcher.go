@@ -17,6 +17,7 @@ type ImgWatcher struct {
 	MaximalUses int
 	CollectingMode string
 	Cache *Cache
+	ImgDBs map[string]ImgDB
 }
 
 func checkRemoveEmptyImages(DB *gorm.DB, prefix string) {
@@ -30,21 +31,26 @@ func updateDB(DB *gorm.DB, items []ImgInfo) func() error {
 	return func() error {
 		tx := DB.Begin()
 		if tx.Error != nil {
-			log.Debugf("[Watcher] Database updating failed with \"%v\", retrying...", tx.Error)
+			log.Debugf("[Watcher] Database transaction failed with \"%v\", retrying...", tx.Error)
 			return tx.Error
 		}
 		defer tx.Commit()
 		for _, img := range items {
-			tx.Create(&img)
+			err := tx.Create(&img).Error
+			if err != nil {
+				tx.Rollback()
+				log.Debugf("Database updating failed with \"%v\", retrying...", tx.Error)
+				return err
+			}
 		}
 		log.Debugf("[Watcher] Commited %d items to db", len(items))
 		return nil
 	}
 }
 
-func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
+func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
 	log.Warningf("[Watcher] Watcher started for prefix \"%s\"", ImgDB.Prefix)
-
+	ag.ImgDBs[ImgDB.Prefix] = ImgDB
 
 	if ag.CollectingMode != "urls"{
 		checkRemoveEmptyImages(ag.DB, ImgDB.Prefix)
@@ -63,7 +69,7 @@ func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
 	var cacheUpdater = func([]ImgInfo) {}
 	switch ag.Cache {
 	case nil:
-		cacheUpdater = func([]ImgInfo) {log.Infof("No cache backend specified, skipping...")}
+		cacheUpdater = func([]ImgInfo) {log.Debugf("No cache backend specified, skipping...")}
 	default:
 		cacheUpdater = func(items []ImgInfo) {
 			log.Debugln("[Watcher] updating cache...")
@@ -98,7 +104,7 @@ func (ag ImgWatcher) WatchImages(ImgDB ImgDB) {
 
 				go cacheUpdater(items)
 
-				go retry(10, time.Millisecond, updateDB(ag.DB, items))
+				go retry(10, time.Millisecond*10, updateDB(ag.DB, items))
 
 				}
 
@@ -147,58 +153,116 @@ func GetFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 	return img, nil
 }
 
-func GetFromCache(Cache *Cache, prefix string) (ImgInfo, error) {
+func GetFromDbById(DB *gorm.DB, prefix string, id string) (ImgInfo, error) {
 	var img ImgInfo
-	var err error
-	img, err = Cache.GetAviable(prefix)
-	if err != nil {
-		return ImgInfo{}, err
+	tx := DB.Begin()
+	if tx.Error == nil {
+		defer tx.Commit()
+		tx.Model(&ImgInfo{}).Where("id = AND type = ?", id, prefix).Order("uses ASC").First(&img)
+	} else {
+		log.Errorf("Database reading failed with \"%v\"", tx.Error)
+		return ImgInfo{}, tx.Error
 	}
 	return img, nil
-
 }
 
-func (ag ImgWatcher) GetImg(ImgDB ImgDB) (ImgInfo, error) {
+func (ag ImgWatcher) GetImg(prefix string, incrUses bool) (ImgInfo, error) {
 	var img ImgInfo
 	var err error
 
 	if ag.Cache != nil {
-		img, err = GetFromCache(ag.Cache, ImgDB.Prefix)
+		img, err = ag.Cache.GetAviable(prefix, incrUses)
 		//Retrying with DB request
 		if err != nil {
-			img, err = GetFromDB(ag.DB, ImgDB.Prefix)
+			img, err = GetFromDB(ag.DB, prefix)
 			if img.ID == "" {
 				//Break here, if nothing found
 				return ImgInfo{}, fmt.Errorf("No aviable images")
 			} else {
-				log.Debugf("Cache updated from DB with result %v", ag.Cache.Set(ImgDB.Prefix, img))
+				log.Debugf("Cache updated from DB with result %v", ag.Cache.Set(prefix, img))
 			}
 		}
 	}
 	//Do it last time
 	if img.ID == "" {
-		img, err = GetFromDB(ag.DB, ImgDB.Prefix)
+		img, err = GetFromDB(ag.DB, prefix)
 	}
 	//Check last attempt
 	if img.ID == "" {
 		return ImgInfo{}, fmt.Errorf("No aviable images")
 	}
 
-	go retry(20, time.Millisecond,  func() error {
+	if !incrUses {
+		return img, nil
+	}
+	go retry(20, time.Millisecond*10,  func() error {
 		tx := ag.DB.Begin()
 		if tx.Error != nil {
-			log.Infof("Database updating failed with \"%v\", retrying...", tx.Error)
+			log.Debugf("Database transaction failed with \"%v\", retrying...", tx.Error)
 			return tx.Error
 		}
 		defer tx.Commit()
-		tx.Model(&ImgInfo{}).Exec("UPDATE img_infos SET uses = uses + 1 WHERE id = ?", img.ID)
+		err = tx.Model(&ImgInfo{}).Exec("UPDATE img_infos SET uses = uses + 1 WHERE id = ?", img.ID).Error
+		if err != nil {
+			log.Debugf("Database updating failed with \"%v\", retrying...", tx.Error)
+			return err
+		}
+		log.Debugf("[Watcher] Incremented uses for item %s to db", img.ID)
 		return nil
 	})
 	return img, nil
 }
 
-func (ag ImgWatcher) GetFile(imgDB ImgDB, id string) (*os.File, error) {
-	return ImgDB.GetImage(imgDB, id)
+func (ag ImgWatcher) GetImgById(prefix string, id string, incrUses bool) (ImgInfo, error) {
+	var img ImgInfo
+	var err error
+
+	if ag.Cache != nil {
+		img, err = ag.Cache.GetById(prefix, id, incrUses)
+		//Retrying with DB request
+		if err != nil {
+			img, err = GetFromDbById(ag.DB, prefix, id)
+			if img.ID == "" {
+				//Break here, if nothing found
+				return ImgInfo{}, fmt.Errorf("No aviable images")
+			} else {
+				log.Debugf("Cache updated from DB with result %v", ag.Cache.Set(prefix, img))
+			}
+		}
+	}
+	//Do it last time
+	if img.ID == "" {
+		img, err = GetFromDbById(ag.DB, prefix, id)
+	}
+	//Check last attempt
+	if img.ID == "" {
+		return ImgInfo{}, fmt.Errorf("No aviable images")
+	}
+
+	if !incrUses {
+		return img, nil
+	}
+	go retry(20, time.Millisecond*10,  func() error {
+		tx := ag.DB.Begin()
+		if tx.Error != nil {
+			log.Debugf("Database transaction failed with \"%v\", retrying...", tx.Error)
+			return tx.Error
+		}
+		defer tx.Commit()
+		err = tx.Model(&ImgInfo{}).Exec("UPDATE img_infos SET uses = uses + 1 WHERE id = ?", img.ID).Error
+		if err != nil {
+			log.Debugf("Database updating failed with \"%v\", retrying...", tx.Error)
+			return err
+		}
+		log.Debugf("[Watcher] Incremented uses for item %s to db", img.ID)
+		return nil
+	})
+	return img, nil
+}
+
+
+func (ag ImgWatcher) GetFile(prefix string, id string) (*os.File, error) {
+	return ag.ImgDBs[prefix].GetImage(id)
 }
 
 func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
@@ -227,7 +291,8 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 	  				  MaximalUses:conf.MaximumUses,
 					  renew:conf.Checktime,
 					  CollectingMode:conf.CollectingMode,
-	 				  Cache:cache}
+	 				  Cache:cache,
+					  ImgDBs: map[string]ImgDB{}}
 }
 
 

@@ -48,10 +48,10 @@ func setupLogs(debuglvl int, logfile string) {
 		log.SetFormatter(&log.JSONFormatter{PrettyPrint:true, DisableTimestamp:false})
 		file, err := os.OpenFile(logfile, os.O_CREATE|os.O_WRONLY, 0666)
 		if err != nil {
-			log.Warning("Error creating\\opening log file \"%s\", using STDERR", logfile)
+			log.Warningf("Error creating\\opening log file \"%s\", using STDERR", logfile)
 			writer = os.Stdout
 		} else {
-			log.Warning("Using log file \"%s\"", logfile)
+			log.Warningf("Using log file \"%s\"", logfile)
 			writer = file
 		}
 
