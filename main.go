@@ -8,6 +8,9 @@ import (
 	"github.com/jinzhu/gorm"
 	"math/rand"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -141,6 +144,25 @@ func ServeRandomImg(prefix string, conf ServingConf) func(c *gin.Context) {
 }
 
 
+func SetupCloseHandler() {
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		fmt.Println("\r- Ctrl+C pressed in Terminal, shutting down...")
+		//DeleteFiles()
+		err := db.Debug().Close()
+		if err != nil {
+			log.Errorln("Error closing DB, database may be corrupted")
+		} else {
+			log.Infoln("Database closed!")
+		}
+		//Watcher.PurgeCache()
+		os.Exit(0)
+	}()
+}
+
+
 func main(){
 	var Api Searhcer
 
@@ -166,8 +188,12 @@ func main(){
 		log.Fatalf("Wrong engine \"%s\" for GetTheCat", conf.Mode)
 	}
 
-	db, _ = ConnectDB(conf.DbPath)
-	defer db.Close()
+	db, err = ConnectDB(conf.DbPath)
+	if err != nil {
+		log.Fatalf("Cannot connect to DB %s with error \"%s\"", conf.DbPath, err)
+	}
+	//defer db.Close()
+	SetupCloseHandler()
 
 	Watcher = NewImgWatcher(db, conf.WatcherConf, conf.Debug)
 
