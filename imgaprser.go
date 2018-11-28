@@ -1,7 +1,6 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -9,13 +8,13 @@ import (
 	"github.com/h2non/filetype"
 	"github.com/imroc/req"
 	"github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"image"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 )
 
 type ImgSaver struct {
@@ -74,7 +73,12 @@ func (i ImgSaver) GetImagesUrls(searcher Searhcer, query string, amount int) ([]
 func downloadImage(imginfo ImgInfo, rootpath string, wg *sync.WaitGroup, processed chan ImgInfo) {
 	defer wg.Done()
 	url := imginfo.Origin
-	r, err := req.Get(url)
+	if url == "" {
+		log.Infof("[ImgSaver] Empty URL recieved %s, download FAILED", url)
+		return
+	}
+	request := req.New()
+	r, err := request.Get(url)
 	if err != nil {
 		log.Infof("[ImgSaver] Collecting img %s FAILED", url)
 		return
@@ -116,9 +120,16 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 	for _, img := range data[:amount] {
 		go downloadImage(img, i.Folder, wg, InfosChan)
 	}
-	go collectImagesInfo(InfosChan, &results)
-	wg.Wait()
-	time.Sleep(time.Millisecond*50)
+	go func (){
+		wg.Wait()
+		close(InfosChan)
+	} ()
+	collectImagesInfo(InfosChan, &results)
+
+	if len(results) == 0 {
+		return []ImgInfo{}, fmt.Errorf("Empty saved images list")
+	}
+
 	return results, nil
 }
 
@@ -190,7 +201,7 @@ func md5Hash(file *os.File) (string, error) {
 
 func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processed chan ImgInfo) {
 	defer wg.Done()
-
+	log.Tracef("preprocessing image %s", descr.Name())
 	imginfo.Width, imginfo.Height = getImageDimension(descr)
 	if imginfo.Width != 800 || imginfo.Height != 600 {
 		descr.Seek(0, 0)
@@ -226,6 +237,7 @@ func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processe
 	}
 	log.Debugf("[Preprocess] Image %s preprocessed!", imginfo.ID)
 	processed <- imginfo
+	return
 }
 
 func collectImagesInfo(channel chan ImgInfo, InfosList *[]ImgInfo) {
@@ -245,15 +257,18 @@ func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 	for _, img := range imgs {
 		descr, err := i.GetImage(img.ID)
 		if err != nil {
-			log.Infof("[Preprocess] Error collecting image: %s with err \"%v\"", img.ID, err)
+			log.Infof("[Preprocess] Error fetching image from disc: %s with err \"%v\"", img.ID, err)
 			continue
 		}
 		wg.Add(1)
 		go preprocessImg(img, descr, wg, InfosChan)
 	}
-	go collectImagesInfo(InfosChan, &results)
-	wg.Wait()
-	time.Sleep(time.Millisecond*50)
+	go func (){
+		wg.Wait()
+		close(InfosChan)
+	} ()
+	collectImagesInfo(InfosChan, &results)
+	//time.Sleep(time.Millisecond*50)
 
 	return results, nil
 }
