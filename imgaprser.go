@@ -54,13 +54,13 @@ func (i ImgSaver) GetImagesUrls(searcher Searhcer, query string, amount int) ([]
 		return []ImgInfo{}, err
 	}
 	lng := len(data)
-	log.Tracef("[ImgSaver] Request for seacrh is sucessfull! collected:%d items", lng)
+	log.Tracef("[ImgSaver] Request for seacrh is successfull! collected:%d items", lng)
 	var results []ImgInfo
 	for c:=0; c < amount && c < lng; c++{
 		url := data[c].Origin
 		id, _ := uuid.NewV4()
 		data[c].ID = id.String()
-		log.Debugf("[ImgSaver] Collecting img ORIGINS %s SUCEED", url)
+		log.Debugf("[ImgSaver] Collecting img ORIGINS %s SUCCEED", url)
 		results = append(results, data[c])
 	}
 	if len(results) == 0 {
@@ -78,7 +78,7 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 		return []ImgInfo{}, err
 	}
 	lng := len(data)
-	log.Tracef("[ImgSaver] Request for seacrh is sucessfull! collected:%d items", lng)
+	log.Tracef("[ImgSaver] Request for seacrh is successfull! collected:%d items", lng)
 
 	var results []ImgInfo
 	for c:=0; c < amount && c < lng; c++{
@@ -188,22 +188,24 @@ func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 			log.Infof("[Preprocess] Error collecting image: %s with err \"%v\"", imgs[idx].ID, err)
 			continue
 		}
-
-		img, err := imaging.Decode(descr)
-		if err != nil {
-			log.Infof("[Preprocess] Error opening as image: %s with err \"%v\"", imgs[idx].ID, err)
-			continue
-		}
-		dstImage800 := imaging.Fit(img, 800, 600, imaging.Lanczos)
-		descr.Seek(0, 0)
-		err = imaging.Encode(descr, dstImage800, imaging.PNG)
-		if err != nil {
-			log.Infof("[Preprocess] Error saving image: %s with err \"%v\"", imgs[idx].ID, err)
-			continue
-			//return err
-		}
 		descr.Seek(0, 0)
 		imgs[idx].Width, imgs[idx].Height = getImageDimension(descr)
+		if imgs[idx].Width != 800 || imgs[idx].Height != 600 {
+			descr.Seek(0, 0)
+			img, err := imaging.Decode(descr)
+			if err != nil {
+				log.Infof("[Preprocess] Error opening as image: %s with err \"%v\"", imgs[idx].ID, err)
+				continue
+			}
+			dstImage800 := imaging.Fit(img, 800, 600, imaging.Lanczos)
+			descr.Seek(0, 0)
+			err = imaging.Encode(descr, dstImage800, imaging.PNG)
+			if err != nil {
+				log.Infof("[Preprocess] Error saving image: %s with err \"%v\"", imgs[idx].ID, err)
+				continue
+				//return err
+			}
+		}
 
 		descr.Seek(0, 0)
 		checksum, err := md5Hash(descr)
@@ -216,7 +218,7 @@ func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 
 		fi, err := descr.Stat()
 		if err != nil {
-			log.Infof("[Preprocess] Error collecting file stats %s, %v", img, err)
+			log.Infof("[Preprocess] Error collecting file stats %s, %v", imgs[idx].ID, err)
 			continue
 		} else {
 			imgs[idx].Filesize = fi.Size()
