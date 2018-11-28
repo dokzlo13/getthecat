@@ -7,6 +7,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -17,18 +18,19 @@ type ImgWatcher struct {
 	MinimalAviable int
 	MaximalUses int
 	CollectingMode string
-	Cache *Cache
+	Cache Cache
+	ImgDbsMutex *sync.RWMutex
 	ImgDBs map[string]ImgDB
 }
 
-func initCache(cache *Cache, db *gorm.DB, prefix string) {
+func initCache(cache Cache, db *gorm.DB, prefix string) {
 	var items []ImgInfo
 	db.Model(&ImgInfo{}).Find(&items)
-	log.Warningf("Initalizing cache for %s from db...", prefix)
+	log.Warningf("Initalizing cache for prefix \"%s\" from db...", prefix)
 	for _, item := range items {
 		cache.Set(prefix, item)
 	}
-	log.Warningln("Cache initalized!")
+	log.Warningln("RedisCache initalized!")
 }
 
 func checkRemoveEmptyImages(DB *gorm.DB, prefix string) {
@@ -61,7 +63,9 @@ func updateDB(DB *gorm.DB, items []ImgInfo) func() error {
 
 func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
 	log.Warningf("[Watcher] Watcher started for prefix \"%s\"", ImgDB.Prefix)
+	ag.ImgDbsMutex.Lock()
 	ag.ImgDBs[ImgDB.Prefix] = ImgDB
+	ag.ImgDbsMutex.Unlock()
 
 	if ag.CollectingMode != "urls"{
 		checkRemoveEmptyImages(ag.DB, ImgDB.Prefix)
@@ -158,11 +162,11 @@ func retry(attempts int, sleep time.Duration, f func() error) error {
 func GetFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 	var img ImgInfo
 	tx := DB.Begin()
-	if tx.Error == nil {
+	if err:=tx.Error; err == nil {
 		defer tx.Commit()
 		tx.Model(&ImgInfo{}).Where("type = ?", prefix).Order("uses ASC").First(&img)
 	} else {
-		log.Errorf("Database reading failed with \"%v\"", tx.Error)
+		log.Errorf("Database reading failed with \"%v\"", err)
 		return ImgInfo{}, tx.Error
 	}
 	return img, nil
@@ -171,11 +175,11 @@ func GetFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 func GetFromDbById(DB *gorm.DB, prefix string, id string) (ImgInfo, error) {
 	var img ImgInfo
 	tx := DB.Begin()
-	if tx.Error == nil {
+	if err:=tx.Error; err == nil {
 		defer tx.Commit()
 		tx.Model(&ImgInfo{}).Where("id = AND type = ?", id, prefix).Order("uses ASC").First(&img)
 	} else {
-		log.Errorf("Database reading failed with \"%v\"", tx.Error)
+		log.Errorf("Database reading failed with \"%v\"", err)
 		return ImgInfo{}, tx.Error
 	}
 	return img, nil
@@ -194,7 +198,7 @@ func (ag ImgWatcher) GetImg(prefix string, incrUses bool) (ImgInfo, error) {
 				//Break here, if nothing found
 				return ImgInfo{}, fmt.Errorf("No aviable images")
 			} else {
-				log.Debugf("Cache updated from DB with result %v", ag.Cache.Set(prefix, img))
+				log.Debugf("RedisCache updated from DB with result %v", ag.Cache.Set(prefix, img))
 			}
 		}
 	}
@@ -213,13 +217,13 @@ func (ag ImgWatcher) GetImg(prefix string, incrUses bool) (ImgInfo, error) {
 	go retry(20, time.Millisecond*10,  func() error {
 		tx := ag.DB.Begin()
 		if tx.Error != nil {
-			log.Debugf("Database transaction failed with \"%v\", retrying...", tx.Error)
+			log.Debugf("Database transaction failed with \"%v\", retrying...", err)
 			return tx.Error
 		}
 		defer tx.Commit()
 		err = tx.Model(&ImgInfo{}).Exec("UPDATE img_infos SET uses = uses + 1 WHERE id = ?", img.ID).Error
 		if err != nil {
-			log.Debugf("Database updating failed with \"%v\", retrying...", tx.Error)
+			log.Debugf("Database updating failed with \"%v\", retrying...", err)
 			return err
 		}
 		log.Debugf("[Watcher] Incremented uses for item %s to db", img.ID)
@@ -241,7 +245,7 @@ func (ag ImgWatcher) GetImgById(prefix string, id string, incrUses bool) (ImgInf
 				//Break here, if nothing found
 				return ImgInfo{}, fmt.Errorf("No aviable images")
 			} else {
-				log.Debugf("Cache updated from DB with result %v", ag.Cache.Set(prefix, img))
+				log.Debugf("RedisCache updated from DB with result %v", ag.Cache.Set(prefix, img))
 			}
 		}
 	}
@@ -277,7 +281,14 @@ func (ag ImgWatcher) GetImgById(prefix string, id string, incrUses bool) (ImgInf
 
 
 func (ag ImgWatcher) GetFile(prefix string, id string) (*os.File, error) {
-	return ag.ImgDBs[prefix].GetImage(id)
+	ag.ImgDbsMutex.RLock()
+	imgdb, ok := ag.ImgDBs[prefix]
+	ag.ImgDbsMutex.RUnlock()
+	if !ok {
+		fmt.Println()
+		return nil, fmt.Errorf("ImgDB Locked")
+	}
+	return imgdb.GetImage(id)
 }
 
 func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
@@ -286,7 +297,7 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 		//db.SetLogger(log.StandardLogger())
 	}
 
-	var cache *Cache
+	var cache *RedisCache
 	var err error
 	if conf.Cache.Addr == "" && conf.Cache.RedisDb == 0 {
 		cache = nil
@@ -298,7 +309,7 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 		log.Errorf("Failed initalizing cache, cache disabled")
 		cache = nil
 	} else {
-		log.Warningf("Cache initalized!")
+		log.Warningf("RedisCache initalized!")
 	}
 
 	return ImgWatcher{DB: db,
@@ -307,7 +318,9 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 					  renew:conf.Checktime,
 					  CollectingMode:conf.CollectingMode,
 	 				  Cache:cache,
-					  ImgDBs: map[string]ImgDB{}}
+					  ImgDBs: map[string]ImgDB{},
+					  ImgDbsMutex: new(sync.RWMutex),
+	}
 }
 
 

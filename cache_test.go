@@ -61,7 +61,7 @@ func BenchmarkCache_GetAviable(b *testing.B) {
 	b.ResetTimer()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := cache.GetAviable("bench")
+		_, err := cache.GetAviable("bench", false)
 		//log.Println(items[i], err)
 		assert.NoError(b, err)
 	}
@@ -95,7 +95,7 @@ func TestCache_GetAviable(t *testing.T) {
 	}
 	wanted := ImgInfo{ID:"f3bc456e-44af-4e52-b9c2-cd88cf1c2c11", Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
 	cache.Set("test", wanted)
-	recieved, err := cache.GetAviable("test")
+	recieved, err := cache.GetAviable("test", false)
 	assert.NoError(t, err)
 	assert.Equal(t, recieved, wanted)
 	cache.client.FlushAll()
@@ -112,13 +112,13 @@ func TestCache_GetById(t *testing.T) {
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c22"
 	wanted := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
 	cache.Set("test", wanted)
-	recieved, err := cache.GetById("test", "f3bc456e-44af-4e52-b9c2-cd88cf1c2cb9", true)
+	recieved, err := cache.GetById("test", id, true)
 	assert.NoError(t, err)
 	assert.Equal(t, recieved, wanted)
 	cache.client.FlushAll()
 }
 
-func TestNewCache(t *testing.T) {
+func TestCache_NewCache(t *testing.T) {
 	logrus.SetLevel(logrus.TraceLevel)
 
 	cache, err := NewCache(redisaddr, redisdb)
@@ -126,7 +126,32 @@ func TestNewCache(t *testing.T) {
 	if err != nil {
 		return
 	}
-	_, err = cache.GetAviable("test")
+	_, err = cache.GetAviable("test", false)
 	assert.Error(t, err, fmt.Errorf("Empty set"))
 	cache.client.FlushAll()
+}
+
+func TestCache_GetScore(t *testing.T) {
+	logrus.SetLevel(logrus.TraceLevel)
+
+	cache, err := NewCache(redisaddr, redisdb)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c22"
+	wanted := ImgInfo{ID:id, Uses:123, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	cache.Set("test", wanted)
+	recieved, err := cache.GetById("test", id, true)
+	assert.NoError(t, err)
+	assert.Equal(t, recieved, wanted)
+
+	score, err := cache.GetScore("test", id)
+	assert.NoError(t, err)
+	//Incremented value by GetById
+	assert.Equal(t,123 + 1, int(score))
+
+
+	cache.client.FlushAll()
+
 }

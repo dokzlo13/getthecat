@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/azer/go-flickr"
 	log "github.com/sirupsen/logrus"
 	"strconv"
 	"sync"
-	"time"
 )
 
 type  Photo  struct {
@@ -98,7 +98,7 @@ func extractOrigin(client FlickrApi, imginfo Photo, wg *sync.WaitGroup, extracte
 
 func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 	log.Debugf("[Flickr] Started searching for \"%s\" ", query)
-	page := randrange(0, 100)
+	page := randrange(0, 300)
 	log.Tracef("[Flickr] Requesting results in page \"%d\" ", page)
 	d, err := f.api.Request("photos.search",
 		 						flickr.Params{
@@ -127,9 +127,14 @@ func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 		go extractOrigin(f, img, wg, InfosChan)
 
 	}
-	go collectImagesInfo(InfosChan, &results)
-	wg.Wait()
-	time.Sleep(time.Millisecond*50)
+	go func (){
+		wg.Wait()
+		close(InfosChan)
+	} ()
+	collectImagesInfo(InfosChan, &results)
 
+	if len(results) == 0 {
+		return []ImgInfo{}, fmt.Errorf("[Flickr] No images found")
+	}
 	return results, nil
 }

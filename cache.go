@@ -8,11 +8,19 @@ import (
 
 )
 
-type Cache struct {
+type RedisCache struct {
 	client *redis.Client
 }
 
-func NewCache (addr string, db int) (*Cache, error) {
+
+type Cache interface {
+	Set (prefix string, item ImgInfo) error
+	GetAviable (prefix string, increment bool) (ImgInfo, error)
+	GetById (prefix string, id string, increment bool) (ImgInfo, error)
+	GetScore(prefix string, id string) (float64, error)
+}
+
+func NewCache (addr string, db int) (*RedisCache, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Password: "", // no password set
@@ -26,30 +34,30 @@ func NewCache (addr string, db int) (*Cache, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Cache{client:client}, nil
+	return &RedisCache{client: client}, nil
 }
 
-func (c Cache) Set (prefix string, item ImgInfo) error {
+func (c RedisCache) Set (prefix string, item ImgInfo) error {
 	b, err := msgpack.Marshal(&item)
 	if err != nil {
-		log.Infof("[Cache] Error marshalling item %s in cache", item.ID)
+		log.Infof("[RedisCache] Error marshalling item %s in cache", item.ID)
 		return err
 	}
 
 	err = c.client.HSet(prefix, item.ID, b).Err()
 	if err != nil {
-		log.Infof("[Cache] Error saving item %s in cache", item.ID)
+		log.Infof("[RedisCache] Error saving item %s in cache", item.ID)
 	}
 
 	err = c.client.ZAdd(prefix + "_index", redis.Z{Member:item.ID, Score:float64(item.Uses)}).Err()
 	if err != nil {
-		log.Infof("[Cache] Error saving index %s in cache", item.ID)
+		log.Infof("[RedisCache] Error saving index %s in cache", item.ID)
 	}
 	return err
 
 }
 
-func (c Cache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
+func (c RedisCache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
 	var err error
 
 	val, err := c.client.ZRangeByScore(prefix + "_index", redis.ZRangeBy{
@@ -64,7 +72,7 @@ func (c Cache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
 	}
 
 	if len(val) < 1 {
-		log.Infoln("[Cache] Empty index results")
+		log.Infoln("[RedisCache] Empty index results")
 		return ImgInfo{}, fmt.Errorf("Empty set")
 	}
 
@@ -75,35 +83,39 @@ func (c Cache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
 }
 
 
-func (c Cache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
+func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
 	var item ImgInfo
 	var err error
 
 	itemdata, err := c.client.HGet(prefix, id).Result()
 	if err != nil {
-		log.Infof("[Cache] Error collecting item %s from cache", item.ID)
+		log.Infof("[RedisCache] Error collecting item %s from cache", item.ID)
 		return ImgInfo{}, err
 	}
 
 	if itemdata == "" {
-		log.Infoln("[Cache] Empty data results")
+		log.Infoln("[RedisCache] Empty data results")
 		return ImgInfo{}, fmt.Errorf("Empty set")
 	}
 
 	err = msgpack.Unmarshal([]byte(itemdata), &item)
 	if err != nil {
-		log.Infof("[Cache] Error unmarshalling %x... from cache", itemdata[:10])
+		log.Infof("[RedisCache] Error unmarshalling %x... from cache", itemdata[:10])
 		return ImgInfo{}, err
 	}
 	if increment {
 		err = c.client.ZIncrBy(prefix + "_index", 1, id).Err()
 		if err != nil {
-			log.Infof("[Cache] Error incrementing index %s in cache", item.ID)
+			log.Infof("[RedisCache] Error incrementing index %s in cache", item.ID)
 			return ImgInfo{}, err
 		}
 	}
-	log.Tracef("[Cache] Item unmarshalled from cache %s", item.ID)
+	log.Tracef("[RedisCache] Item unmarshalled from cache %s", item.ID)
 	return item, nil
+}
+
+func (c RedisCache) GetScore(prefix string, id string) (float64, error) {
+	return c.client.ZScore(prefix + "_index", id).Result()
 }
 
 //func ExampleMarshal() {
