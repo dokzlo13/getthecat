@@ -6,6 +6,7 @@ import (
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	log "github.com/sirupsen/logrus"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -18,6 +19,16 @@ type ImgWatcher struct {
 	CollectingMode string
 	Cache *Cache
 	ImgDBs map[string]ImgDB
+}
+
+func initCache(cache *Cache, db *gorm.DB, prefix string) {
+	var items []ImgInfo
+	db.Model(&ImgInfo{}).Find(&items)
+	log.Warningf("Initalizing cache for %s from db...", prefix)
+	for _, item := range items {
+		cache.Set(prefix, item)
+	}
+	log.Warningln("Cache initalized!")
 }
 
 func checkRemoveEmptyImages(DB *gorm.DB, prefix string) {
@@ -54,6 +65,10 @@ func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
 
 	if ag.CollectingMode != "urls"{
 		checkRemoveEmptyImages(ag.DB, ImgDB.Prefix)
+	}
+
+	if ag.Cache != nil {
+		initCache(ag.Cache, ag.DB, ImgDB.Prefix)
 	}
 
 	var collector func(amount int) ([]ImgInfo, error)
@@ -298,6 +313,13 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 
 func ConnectDB(path string) (*gorm.DB, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
+
+		err = os.MkdirAll(filepath.Dir(path), os.ModePerm)
+		if err != nil {
+			log.Fatalf("Error creating database folder for ImgSaver \"%s\"", path)
+			return nil, err
+		}
+
 		db, err := gorm.Open("sqlite3", path)
 		db.AutoMigrate(&ImgInfo{})
 		db.Exec("PRAGMA journal_mode=WAL; PRAGMA temp_store = MEMORY; PRAGMA synchronous = OFF;")

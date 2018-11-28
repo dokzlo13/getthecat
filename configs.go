@@ -9,6 +9,7 @@ import (
 type ServingConf struct {
 	Mode     string `json:"mode"`
 	Filetype string `json:"filetype"`
+	ApiPath string `json:"apipath"`
 }
 
 type WatcherConf struct {
