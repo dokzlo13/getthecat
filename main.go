@@ -34,6 +34,18 @@ func setHeaders(filetype string, prefix string) map[string]string {
 
 func ServeImgInfo(prefix string) func(c *gin.Context) {
 	return func(c *gin.Context) {
+		imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), false)
+		if err != nil {
+			log.Errorf("No aviable file found with err \"%v\"", err)
+			c.AbortWithError(404, err)
+			return
+		}
+		c.JSON(200, imginfo)
+	}
+}
+
+func ServeRandomImgInfo(prefix string) func(c *gin.Context) {
+	return func(c *gin.Context) {
 		imginfo, err := Watcher.GetImg(prefix, false)
 		if err != nil {
 			log.Errorf("No aviable file found with err \"%v\"", err)
@@ -165,21 +177,26 @@ func main(){
 		gin.Recovery(),
 	)
 
+	var api *gin.RouterGroup
 	//ImgDbs = make(map[string]ImgDB, len(conf.Endpoints))
+	if apipath:=conf.ServingConf.ApiPath; apipath != "" {
+		api = router.Group(apipath)
+	} else {
+		api = router.Group("")
+	}
 
 	for _, endpoint := range conf.Endpoints {
 		log.Printf("Initalizing serve for \"%s\"", endpoint)
 		//ImgDbs[endpoint] =
 		Imdb := NewImgDB(Api, conf.ImgFolder, endpoint)
 		go Watcher.WatchImages(Imdb)
-		router.GET("/" + endpoint + "/img", ServeRandomImg(endpoint, conf.ServingConf))
-		router.GET("/" + endpoint + "/rand", ServeImgInfo(endpoint))
-		router.GET("/" + endpoint + "/img/:id", ServeImg(endpoint, conf.ServingConf))
-
-
+		subgroup := api.Group(endpoint)
+		subgroup.GET("/info", ServeRandomImgInfo(endpoint))
+		subgroup.GET("/info/:id", ServeImgInfo(endpoint))
+		subgroup.GET("/img", ServeRandomImg(endpoint, conf.ServingConf))
+		subgroup.GET("/img/:id", ServeImg(endpoint, conf.ServingConf))
 	}
 
-	log.Warningln(Watcher.ImgDBs)
 	router.Run("0.0.0.0:8080")
 
 }
