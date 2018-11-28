@@ -1,12 +1,25 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
 	"encoding/json"
 	"github.com/azer/go-flickr"
+	log "github.com/sirupsen/logrus"
 	"strconv"
+	"sync"
+	"time"
 )
 
+type  Photo  struct {
+	ID       string `json:"id"`
+	Owner    string `json:"owner"`
+	Secret   string `json:"secret"`
+	Server   string `json:"server"`
+	Farm     int    `json:"farm"`
+	Title    string `json:"title"`
+	Ispublic int    `json:"ispublic"`
+	Isfriend int    `json:"isfriend"`
+	Isfamily int    `json:"isfamily"`
+}
 
 type FlickrSearchResponse struct {
 	Photos struct {
@@ -14,17 +27,7 @@ type FlickrSearchResponse struct {
 		Pages   int    `json:"pages"`
 		Perpage int    `json:"perpage"`
 		Total   string `json:"total"`
-		Photo   []struct {
-			ID       string `json:"id"`
-			Owner    string `json:"owner"`
-			Secret   string `json:"secret"`
-			Server   string `json:"server"`
-			Farm     int    `json:"farm"`
-			Title    string `json:"title"`
-			Ispublic int    `json:"ispublic"`
-			Isfriend int    `json:"isfriend"`
-			Isfamily int    `json:"isfamily"`
-		} `json:"photo"`
+		Photo   []Photo `json:"photo"`
 	} `json:"photos"`
 	Stat string `json:"stat"`
 }
@@ -63,6 +66,35 @@ func NewFlickrApi(key string, amount int) FlickrApi {
 	return searcher
 }
 
+func extractOrigin(client FlickrApi, imginfo Photo, wg *sync.WaitGroup, extracted chan ImgInfo) {
+	defer wg.Done()
+
+	var imgsizes []byte
+	var err error
+
+	log.Traceln("[Flickr] Requesting", imginfo.ID)
+	imgsizes, err = client.api.Request("photos.getSizes", flickr.Params{"photo_id":imginfo.ID})
+	if err != nil {
+		log.Infoln("[Flickr] Error requesting ", imginfo.ID)
+		return
+	}
+	var imresp FlickrImagesResponse
+	err = json.Unmarshal(imgsizes, &imresp)
+	if err != nil {
+		log.Infoln("[Flickr] Error unmarshalling ", err, string(imgsizes))
+		return
+	}
+
+	for _, imgsize := range imresp.Sizes.Size {
+		if imgsize.Label == "Large" {
+			//Here we done
+			extracted <-  ImgInfo{Origin:imgsize.Source}
+			log.Debugf("[Flickr] Extracted origin %s for \"%s\"", imgsize.Source, imginfo.ID)
+			break
+		}
+	}
+	return
+}
 
 func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 	log.Debugf("[Flickr] Started searching for \"%s\" ", query)
@@ -85,31 +117,19 @@ func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 		return []ImgInfo{}, err
 	}
 
-	var imgs []ImgInfo
+	var results []ImgInfo
 
-	for _, pic := range resp.Photos.Photo {
-		var imgsizes []byte
+	wg := new(sync.WaitGroup)
+	InfosChan := make(chan ImgInfo)
+	wg.Add(len(resp.Photos.Photo))
 
-		log.Traceln("[Flickr] Requesting", pic.ID)
-		imgsizes, err = f.api.Request("photos.getSizes", flickr.Params{"photo_id":pic.ID})
-		if err != nil {
-			log.Infoln("[Flickr] Error requesting ", pic.ID)
-			continue
-		}
-		var imresp FlickrImagesResponse
-		err = json.Unmarshal(imgsizes, &imresp)
-		if err != nil {
-			log.Infoln("[Flickr] Error unmarshalling ", err, string(imgsizes))
-			continue
-		}
+	for _, img := range resp.Photos.Photo {
+		go extractOrigin(f, img, wg, InfosChan)
 
-		for _, imgsize := range imresp.Sizes.Size {
-			if imgsize.Label == "Large" {
-				imgs = append(imgs, ImgInfo{Origin:imgsize.Source})
-				log.Debugf("[Flickr] Extracted origin %s for \"%s\"", imgsize.Source, pic.ID)
-				break
-			}
-		}
 	}
-	return imgs, nil
+	go collectImagesInfo(InfosChan, &results)
+	wg.Wait()
+	time.Sleep(time.Millisecond*50)
+
+	return results, nil
 }
