@@ -19,120 +19,9 @@ type ImgWatcher struct {
 	MaximalUses int
 	CollectingMode string
 	Cache Cache
-	ImgDbsMutex *sync.RWMutex
+	ImgDbsMutex sync.RWMutex
 	ImgDBs map[string]ImgDB
 }
-
-func initCache(cache Cache, db *gorm.DB, prefix string) {
-	var items []ImgInfo
-	db.Model(&ImgInfo{}).Find(&items)
-	log.Warningf("Initalizing cache for prefix \"%s\" from db...", prefix)
-	for _, item := range items {
-		cache.Set(prefix, item)
-	}
-	log.Warningln("RedisCache initalized!")
-}
-
-func checkRemoveEmptyImages(DB *gorm.DB, prefix string) {
-	var count int
-	DB.Where("type = ? AND (path = '' OR filesize = '0')", prefix).Delete(&ImgInfo{}).Count(&count)
-	log.Warningf("[Watcher] Removed values with empty filepaths from DB for prefix \"%s\"", prefix)
-}
-
-
-func updateDB(DB *gorm.DB, items []ImgInfo) func() error {
-	return func() error {
-		tx := DB.Begin()
-		if tx.Error != nil {
-			log.Debugf("[Watcher] Database transaction failed with \"%v\", retrying...", tx.Error)
-			return tx.Error
-		}
-		defer tx.Commit()
-		for _, img := range items {
-			err := tx.Create(&img).Error
-			if err != nil {
-				tx.Rollback()
-				log.Debugf("Database updating failed with \"%v\", retrying...", tx.Error)
-				return err
-			}
-		}
-		log.Debugf("[Watcher] Commited %d items to db", len(items))
-		return nil
-	}
-}
-
-func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
-	log.Warningf("[Watcher] Watcher started for prefix \"%s\"", ImgDB.Prefix)
-	ag.ImgDbsMutex.Lock()
-	ag.ImgDBs[ImgDB.Prefix] = ImgDB
-	ag.ImgDbsMutex.Unlock()
-
-	if ag.CollectingMode != "urls"{
-		checkRemoveEmptyImages(ag.DB, ImgDB.Prefix)
-	}
-
-	if ag.Cache != nil {
-		initCache(ag.Cache, ag.DB, ImgDB.Prefix)
-	}
-
-	var collector func(amount int) ([]ImgInfo, error)
-	switch ag.CollectingMode {
-	case "urls":
-		collector = ImgDB.NewUrls
-	case "files":
-		collector = ImgDB.NewImgs
-	default:
-		log.Fatalf("[Watcher] found unknown collection mode \"%s\"", ag.CollectingMode)
-	}
-
-	var cacheUpdater = func([]ImgInfo) {}
-	switch ag.Cache {
-	case nil:
-		cacheUpdater = func([]ImgInfo) {log.Debugf("No cache backend specified, skipping...")}
-	default:
-		cacheUpdater = func(items []ImgInfo) {
-			log.Debugln("[Watcher] updating cache...")
-			for _, img := range items {
-				ag.Cache.Set(ImgDB.Prefix, img)
-			}
-			log.Debugln("[Watcher] Cache updated!")
-		}
-	}
-
-	for {
-		var count int
-		ag.DB.Model(&ImgInfo{}).Where("uses < ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Count(&count)
-		log.Debugf("[Watcher] Explored %d aviable images local for prefix \"%s\"", count, ImgDB.Prefix)
-
-		if count < ag.MinimalAviable {
-			log.Debugf("[Watcher] DB Watcher detect %d aviable items of expected %d for prefix \"%s\" starting collection task", count, ag.MinimalAviable, ImgDB.Prefix)
-
-			var err error
-			collected, err := collector(ag.MinimalAviable - count)
-
-			if err != nil {
-				log.Warningf("[Watcher] Error collecting images: \"%s\"", err)
-			} else {
-				items := make([]ImgInfo, len(collected))
-				log.Debugf("[Watcher] DB recieve %d new items from ImgParser", len(items))
-				for idx, img := range collected{
-					items[idx] = img
-					items[idx].Uses = 0
-					items[idx].Type = ImgDB.Prefix
-				}
-
-				go cacheUpdater(items)
-
-				go retry(10, time.Millisecond*10, updateDB(ag.DB, items))
-
-				}
-
-			}
-		time.Sleep(time.Second * time.Duration(ag.renew))
-	}
-}
-
-
 
 type stop struct {
 	error
@@ -158,6 +47,74 @@ func retry(attempts int, sleep time.Duration, f func() error) error {
 	return nil
 }
 
+
+
+func (ag ImgWatcher) syncCacheToDb(prefix string) error {
+	log.Tracef("[Watcher] Attempting to sync cache for \"%s\" with DB...", prefix)
+	knownIds, err := ag.Cache.GetAllIds(prefix)
+	states := map[string]int{}
+	infos := map[string]ImgInfo{}
+
+	if err != nil {
+		return err
+	}
+	for _, id := range knownIds {
+		views, err := ag.Cache.GetScore(prefix, id)
+		if err != nil {
+			log.Infof("Can not collect rank for %s from cache", id)
+		}
+		states[id] = int(views)
+	}
+
+	for _, id:= range knownIds{
+		data, err := ag.Cache.GetById(prefix, id, false)
+		if err != nil {
+			//continue
+		}
+		infos[id] = data
+	}
+
+
+	tx := ag.DB.Begin()
+	if err:=tx.Error; err != nil {
+		log.Tracef("[Watcher] Error creating transaction for sync")
+		return err
+	}
+	for _, id := range knownIds {
+		item := infos[id]
+		item.Uses = states[id]
+		tx.FirstOrCreate(&item, ImgInfo{ID:id})
+		tx.Exec("UPDATE img_infos SET uses = ? WHERE id = ? AND type = ?", states[id], id, prefix)
+	}
+	if err:=tx.Commit().Error; err != nil {
+		log.Infof("[Watcher] Error commiting transaction for sync")
+		tx.Rollback()
+		return err
+	}
+	log.Tracef("[Watcher] Cache to DB synced!")
+	return nil
+}
+
+func (ag ImgWatcher) syncDbToCache() {
+	var items []ImgInfo
+	var err error
+	ag.DB.Model(&ImgInfo{}).Find(&items)
+	log.Infof("Initalizing cache from db...")
+	for _, item := range items {
+		err = ag.Cache.Set(item.Type, item)
+		if err != nil {
+			log.Warningf("Error initalizing cache for %v", item)
+		}
+	}
+	log.Warningln("Cache initalized!")
+}
+
+
+func checkRemoveEmptyImages(DB *gorm.DB, prefix string) {
+	var count int
+	DB.Where("type = ? AND (path = '' OR filesize = '0')", prefix).Delete(&ImgInfo{}).Count(&count)
+	log.Warningf("[Watcher] Removed values with empty filepaths from DB for prefix \"%s\"", prefix)
+}
 
 func GetFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 	var img ImgInfo
@@ -185,26 +142,64 @@ func GetFromDbById(DB *gorm.DB, prefix string, id string) (ImgInfo, error) {
 	return img, nil
 }
 
+func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
+	if  debug == 3 {
+		db = db.Debug()
+		//db.SetLogger(log.StandardLogger())
+	}
+
+	var cache Cache
+	var err error
+	if conf.Cache.Addr == "" && conf.Cache.RedisDb == 0 {
+		cache = NewMemCache()
+		log.Warningln("Using in-memory cache!")
+	} else {
+		cache, err = NewRedisCache(conf.Cache.Addr, conf.Cache.RedisDb)
+
+		if err != nil {
+			log.Errorf("Failed initalizing Redis-cache, cache disabled")
+			cache = NewMemCache()
+			log.Warningln("Using in-memory cache")
+
+		} else {
+			log.Warningf("Using Redis-cache!")
+		}
+	}
+
+
+	watcher := ImgWatcher{DB: db,
+		MinimalAviable:conf.MinimalAviable,
+		MaximalUses:conf.MaximumUses,
+		renew:conf.Checktime,
+		CollectingMode:conf.CollectingMode,
+		Cache:cache,
+		ImgDBs: map[string]ImgDB{},
+		ImgDbsMutex: *new(sync.RWMutex),
+	}
+
+	watcher.syncDbToCache()
+	return watcher
+}
+
 func (ag ImgWatcher) GetImg(prefix string, incrUses bool) (ImgInfo, error) {
 	var img ImgInfo
 	var err error
 
-	if ag.Cache != nil {
-		img, err = ag.Cache.GetAviable(prefix, incrUses)
-		//Retrying with DB request
-		if err != nil {
-			img, err = GetFromDB(ag.DB, prefix)
-			if img.ID == "" {
-				//Break here, if nothing found
-				return ImgInfo{}, fmt.Errorf("No aviable images")
+	img, err = ag.Cache.GetAviable(prefix, incrUses)
+	//Retrying with DB request
+	if err != nil {
+		img, err = GetFromDB(ag.DB, prefix)
+		if img.ID == "" {
+			//Break here, if nothing found
+			return ImgInfo{}, fmt.Errorf("No aviable images")
+		} else {
+			err = ag.Cache.Set(prefix, img)
+			if err != nil {
+				log.Debugf("[Watcher] Cache from DB updating failed with error %v", err)
 			} else {
-				log.Debugf("RedisCache updated from DB with result %v", ag.Cache.Set(prefix, img))
+				log.Debugf("[Watcher] Cache updated from DB!")
 			}
 		}
-	}
-	//Do it last time
-	if img.ID == "" {
-		img, err = GetFromDB(ag.DB, prefix)
 	}
 	//Check last attempt
 	if img.ID == "" {
@@ -214,45 +209,26 @@ func (ag ImgWatcher) GetImg(prefix string, incrUses bool) (ImgInfo, error) {
 	if !incrUses {
 		return img, nil
 	}
-	go retry(20, time.Millisecond*10,  func() error {
-		tx := ag.DB.Begin()
-		if tx.Error != nil {
-			log.Debugf("Database transaction failed with \"%v\", retrying...", err)
-			return tx.Error
-		}
-		defer tx.Commit()
-		err = tx.Model(&ImgInfo{}).Exec("UPDATE img_infos SET uses = uses + 1 WHERE id = ?", img.ID).Error
-		if err != nil {
-			log.Debugf("Database updating failed with \"%v\", retrying...", err)
-			return err
-		}
-		log.Debugf("[Watcher] Incremented uses for item %s to db", img.ID)
-		return nil
-	})
+	//go retry(20, time.Millisecond*10,  updateItem(ag.DB, img))
 	return img, nil
 }
 
 func (ag ImgWatcher) GetImgById(prefix string, id string, incrUses bool) (ImgInfo, error) {
 	var img ImgInfo
 	var err error
-
-	if ag.Cache != nil {
-		img, err = ag.Cache.GetById(prefix, id, incrUses)
-		//Retrying with DB request
-		if err != nil {
-			img, err = GetFromDbById(ag.DB, prefix, id)
-			if img.ID == "" {
-				//Break here, if nothing found
-				return ImgInfo{}, fmt.Errorf("No aviable images")
-			} else {
-				log.Debugf("RedisCache updated from DB with result %v", ag.Cache.Set(prefix, img))
-			}
+	//TODO: Fix Cache getter
+	img, err = ag.Cache.GetById(prefix, id, incrUses)
+	//Retrying with DB request
+	if err != nil {
+		img, err = GetFromDbById(ag.DB, prefix, id)
+		if img.ID == "" {
+			//Break here, if nothing found
+			return ImgInfo{}, fmt.Errorf("No aviable images")
+		} else {
+			log.Debugf("RedisCache updated from DB with result %v", ag.Cache.Set(prefix, img))
 		}
 	}
-	//Do it last time
-	if img.ID == "" {
-		img, err = GetFromDbById(ag.DB, prefix, id)
-	}
+
 	//Check last attempt
 	if img.ID == "" {
 		return ImgInfo{}, fmt.Errorf("No aviable images")
@@ -261,24 +237,9 @@ func (ag ImgWatcher) GetImgById(prefix string, id string, incrUses bool) (ImgInf
 	if !incrUses {
 		return img, nil
 	}
-	go retry(20, time.Millisecond*10,  func() error {
-		tx := ag.DB.Begin()
-		if tx.Error != nil {
-			log.Debugf("Database transaction failed with \"%v\", retrying...", tx.Error)
-			return tx.Error
-		}
-		defer tx.Commit()
-		err = tx.Model(&ImgInfo{}).Exec("UPDATE img_infos SET uses = uses + 1 WHERE id = ?", img.ID).Error
-		if err != nil {
-			log.Debugf("Database updating failed with \"%v\", retrying...", tx.Error)
-			return err
-		}
-		log.Debugf("[Watcher] Incremented uses for item %s to db", img.ID)
-		return nil
-	})
+	//go retry(20, time.Millisecond*10,  updateItem(ag.DB, img))
 	return img, nil
 }
-
 
 func (ag ImgWatcher) GetFile(prefix string, id string) (*os.File, error) {
 	ag.ImgDbsMutex.RLock()
@@ -291,38 +252,93 @@ func (ag ImgWatcher) GetFile(prefix string, id string) (*os.File, error) {
 	return imgdb.GetImage(id)
 }
 
-func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
-	if  debug == 3 {
-		db = db.Debug()
-		//db.SetLogger(log.StandardLogger())
+func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
+	log.Warningf("[Watcher] Watcher started for prefix \"%s\"", ImgDB.Prefix)
+	ag.ImgDbsMutex.Lock()
+	ag.ImgDBs[ImgDB.Prefix] = ImgDB
+	ag.ImgDbsMutex.Unlock()
+
+	if ag.CollectingMode != "urls"{
+		checkRemoveEmptyImages(ag.DB, ImgDB.Prefix)
 	}
 
-	var cache *RedisCache
-	var err error
-	if conf.Cache.Addr == "" && conf.Cache.RedisDb == 0 {
-		cache = nil
-	} else {
-		cache, err = NewCache(conf.Cache.Addr, conf.Cache.RedisDb)
+	var collector func(amount int) ([]ImgInfo, error)
+	switch ag.CollectingMode {
+	case "urls":
+		collector = ImgDB.NewUrls
+	case "files":
+		collector = ImgDB.NewImgs
+	default:
+		log.Fatalf("[Watcher] found unknown collection mode \"%s\"", ag.CollectingMode)
 	}
 
-	if err != nil {
-		log.Errorf("Failed initalizing cache, cache disabled")
-		cache = nil
-	} else {
-		log.Warningf("RedisCache initalized!")
-	}
+	cacheUpdater := func(items []ImgInfo) {
+		log.Debugln("[Watcher] updating cache...")
+		for _, img := range items {
+			ag.Cache.Set(ImgDB.Prefix, img)
+		}
+		log.Debugln("[Watcher] Cache updated!")
+		}
 
-	return ImgWatcher{DB: db,
-					  MinimalAviable:conf.MinimalAviable,
-	  				  MaximalUses:conf.MaximumUses,
-					  renew:conf.Checktime,
-					  CollectingMode:conf.CollectingMode,
-	 				  Cache:cache,
-					  ImgDBs: map[string]ImgDB{},
-					  ImgDbsMutex: new(sync.RWMutex),
+	for {
+		var count int
+
+		items, err := ag.Cache.GetIdsInRange(ImgDB.Prefix, ag.MaximalUses-1, ag.MaximalUses-1)
+		if err != nil {
+			log.Fatalf("Error receiving stats from cache \"%v\"", err)
+		}
+		count = len(items)
+		//ag.DB.Model(&ImgInfo{}).Where("uses < ? AND type = ?", ag.MaximalUses, ImgDB.Prefix).Count(&count)
+		log.Debugf("[Watcher] Explored %d aviable images local for prefix \"%s\"", count, ImgDB.Prefix)
+
+		if count < ag.MinimalAviable {
+			log.Debugf("[Watcher] DB Watcher detect %d aviable items of expected %d for prefix \"%s\" starting collection task", count, ag.MinimalAviable, ImgDB.Prefix)
+
+			var err error
+			collected, err := collector(ag.MinimalAviable - count)
+
+			if err != nil {
+				log.Warningf("[Watcher] Error collecting images: \"%s\"", err)
+			} else {
+				items := make([]ImgInfo, len(collected))
+				log.Debugf("[Watcher] Collected %d new items from ImgParser for prefix %s", len(items), ImgDB.Prefix)
+				for idx, img := range collected{
+					items[idx] = img
+					items[idx].Uses = 0
+					items[idx].Type = ImgDB.Prefix
+				}
+				cacheUpdater(items)
+				//go retry(10, time.Millisecond*10, updateDB(ag.DB, items))
+			}
+
+		}
+		time.Sleep(time.Second * time.Duration(ag.renew))
+		//go retry(10, time.Millisecond * 10, func() error {return ag.syncCacheToDb(ImgDB.Prefix)})
 	}
 }
 
+func (ag ImgWatcher) Sync() error {
+	log.Infoln("[Watcher] Syncing DB...")
+	ag.ImgDbsMutex.RLock()
+	var err error
+	for _, i := range ag.ImgDBs {
+		err = ag.syncCacheToDb(i.Prefix)
+		if err != nil {
+			return err
+		}
+	}
+	ag.ImgDbsMutex.RUnlock()
+	log.Infoln("[Watcher] Sync complete")
+	return nil
+}
+
+func (ag ImgWatcher) StartSync() {
+	log.Warningln("[Watcher] DB sync task started!")
+	for {
+		time.Sleep(time.Second * time.Duration(ag.renew))
+		retry(5, time.Millisecond, func() error {return ag.Sync()})
+	}
+}
 
 func ConnectDB(path string) (*gorm.DB, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {

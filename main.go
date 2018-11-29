@@ -150,14 +150,13 @@ func SetupCloseHandler() {
 	go func() {
 		<-c
 		fmt.Println("\r- Ctrl+C pressed in Terminal, shutting down...")
-		//DeleteFiles()
+		Watcher.Sync()
 		err := db.Debug().Close()
 		if err != nil {
 			log.Errorln("Error closing DB, database may be corrupted")
 		} else {
 			log.Infoln("Database closed!")
 		}
-		//Watcher.PurgeCache()
 		os.Exit(0)
 	}()
 }
@@ -223,6 +222,7 @@ func main(){
 		subgroup.GET("/img/:id", ServeImg(endpoint, conf.ServingConf))
 	}
 
+	go Watcher.StartSync()
 	router.Run("0.0.0.0:8080")
 
 }

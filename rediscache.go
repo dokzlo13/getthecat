@@ -5,7 +5,7 @@ import (
 	"github.com/go-redis/redis"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack"
-
+	"strconv"
 )
 
 type RedisCache struct {
@@ -18,9 +18,11 @@ type Cache interface {
 	GetAviable (prefix string, increment bool) (ImgInfo, error)
 	GetById (prefix string, id string, increment bool) (ImgInfo, error)
 	GetScore(prefix string, id string) (float64, error)
+	GetAllIds (prefix string) ([]string, error)
+	GetIdsInRange(prefix string, min int, max int) ([]string, error)
 }
 
-func NewCache (addr string, db int) (*RedisCache, error) {
+func NewRedisCache(addr string, db int) (*RedisCache, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Password: "", // no password set
@@ -82,6 +84,21 @@ func (c RedisCache) GetAviable (prefix string, increment bool) (ImgInfo, error) 
 
 }
 
+func (c RedisCache) GetAllIds (prefix string) ([]string, error) {
+	return c.client.HKeys(prefix).Result()
+}
+
+func (c RedisCache) GetIdsInRange (prefix string, min int, max int) ([]string, error) {
+	items, err := c.client.ZRangeByScoreWithScores(prefix + "_index", redis.ZRangeBy{Min:strconv.Itoa(min), Max:strconv.Itoa(min)}).Result()
+	if err != nil {
+		return []string{}, err
+	}
+	var data = make([]string, len(items))
+	for i, itm := range items {
+		data[i] = itm.Member.(string)
+	}
+	return data, nil
+}
 
 func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
 	var item ImgInfo
