@@ -114,6 +114,9 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 	var results []ImgInfo
 	wg := new(sync.WaitGroup)
 	InfosChan := make(chan ImgInfo)
+	if len(data) < amount {
+		return []ImgInfo{}, fmt.Errorf("imgsaver recieve less items, then amount")
+	}
 	wg.Add(len(data[:amount]))
 
 
@@ -137,31 +140,12 @@ func (i ImgSaver) GetImage(id string) (*os.File, error) {
 	path := filepath.Join(i.Folder, id)
 	//var buf []byte
 
-	buf := make([]byte, 10)
 	descr, err := os.OpenFile(path, os.O_RDWR, 0644)
 	//descr, err := os.Open(path)
 	if err != nil {
 		log.Infof("[ImgGetter] Error openning file: %s err: %v", path, err)
 		return nil, err
 	}
-	_, err = descr.Read(buf)
-	if err != nil {
-		log.Infof("[ImgGetter] Error reading file for fetching mimetype: %s err: %v", path, err)
-		return nil, err
-	}
-
-	//Filetype checkout
-	kind, unknown := filetype.Match(buf)
-	if unknown != nil {
-		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", path, err)
-		return nil, fmt.Errorf("Unknown file type for \"%s\"!", path)
-	}
-	if !filetype.IsImage(buf) {
-		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", path, err)
-		return nil, fmt.Errorf("Wrong file type for \"%s\" \"%s\"", path, kind.MIME)
-	}
-
-	descr.Seek(0, 0)
 	return descr, nil
 
 }
@@ -201,8 +185,30 @@ func md5Hash(file *os.File) (string, error) {
 
 func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processed chan ImgInfo) {
 	defer wg.Done()
-	log.Tracef("preprocessing image %s", descr.Name())
+	log.Tracef("[Preprocess] Preprocessing image %s", descr.Name())
 	imginfo.Width, imginfo.Height = getImageDimension(descr)
+	var err error
+
+	descr.Seek(0, 0)
+	buf := make([]byte, 10)
+	_, err = descr.Read(buf)
+	if err != nil {
+		log.Infof("[ImgGetter] Error reading file for fetching mimetype: %s err: %v", imginfo.ID, err)
+		return
+	}
+
+	//Filetype checkout
+	_, err = filetype.Match(buf)
+	if err != nil {
+		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, err)
+		return
+	}
+	if !filetype.IsImage(buf) {
+		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, err)
+		return
+	}
+
+	descr.Seek(0, 0)
 	if imginfo.Width != 800 || imginfo.Height != 600 {
 		descr.Seek(0, 0)
 		img, err := imaging.Decode(descr)
@@ -217,7 +223,10 @@ func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processe
 			log.Infof("[Preprocess] Error saving image: %s with err \"%v\"", imginfo.ID, err)
 			return
 		}
+		descr.Seek(0, 0)
+		imginfo.Width, imginfo.Height = getImageDimension(descr)
 	}
+
 
 	descr.Seek(0, 0)
 	checksum, err := md5Hash(descr)
@@ -235,6 +244,7 @@ func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processe
 	} else {
 		imginfo.Filesize = fi.Size()
 	}
+
 	log.Debugf("[Preprocess] Image %s preprocessed!", imginfo.ID)
 	processed <- imginfo
 	return
