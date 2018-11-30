@@ -14,6 +14,7 @@ type ImgInfo struct {
 	Height int
 
 	Filesize int64 `json:"filesize"`
+	Mimetype string `json:"-"`
 
 }
 

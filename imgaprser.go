@@ -210,6 +210,7 @@ func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processe
 		log.Infof("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, ftype)
 		return
 	}
+	imginfo.Mimetype = ftype.MIME.Type + "/" + ftype.MIME.Subtype
 
 	descr.Seek(0, 0)
 	checksum, err := md5Hash(descr)

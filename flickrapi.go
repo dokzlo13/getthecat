@@ -89,7 +89,7 @@ func extractOrigin(client FlickrApi, imginfo Photo, wg *sync.WaitGroup, extracte
 		if imgsize.Label == "Large" {
 			//Here we done
 			extracted <-  ImgInfo{Origin:imgsize.Source}
-			log.Debugf("[Flickr] Extracted origin %s for \"%s\"", imgsize.Source, imginfo.ID)
+			log.Debugf("[Flickr] Extracted origin for \"%s\"", imginfo.ID)
 			break
 		}
 	}

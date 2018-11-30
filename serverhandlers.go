@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	"os"
 )
 
 
@@ -11,10 +12,10 @@ func ServeImgInfo(prefix string) func(c *gin.Context) {
 		imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), true)
 		if err != nil {
 			log.Errorf("No aviable file found with err \"%v\"", err)
-			c.AbortWithError(404, err)
+			c.JSON(404, gin.H{"error": err.Error(), "data": gin.H{}})
 			return
 		}
-		c.JSON(200, imginfo)
+		c.JSON(200, gin.H{"error": "", "data": imginfo})
 	}
 }
 
@@ -23,10 +24,10 @@ func ServeRandomImgInfo(prefix string) func(c *gin.Context) {
 		imginfo, err := Watcher.GetImg(prefix, false)
 		if err != nil {
 			log.Errorf("No aviable file found with err \"%v\"", err)
-			c.AbortWithError(404, err)
+			c.JSON(404, gin.H{"error": err.Error(), "data": gin.H{}})
 			return
 		}
-		c.JSON(200, imginfo)
+		c.JSON(200, gin.H{"error": "", "data": imginfo})
 	}
 }
 
@@ -70,7 +71,18 @@ func ServeRandomImg(prefix string, conf ServingConf) func(c *gin.Context) {
 				c.AbortWithError(404, err)
 				return
 			}
-			c.File(imginfo.Path)
+
+			f, err := os.Open(imginfo.Path)
+			if err != nil {
+				c.AbortWithError(404, err)
+				return
+			}
+			defer f.Close()
+			c.Header("X-IMAGE-ID", imginfo.ID)
+			c.Header("Content-Transfer-Encoding", "binary")
+			c.Header("Accept-Ranges", "bytes")
+			c.Header("Cache-Control", "max-age=0 no-cache no-store must-revalidate")
+			c.DataFromReader(200, imginfo.Filesize, imginfo.Mimetype, f, map[string]string{})
 			return
 		}
 	case "proxy":
