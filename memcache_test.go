@@ -90,3 +90,36 @@ func TestMemCache_GetScore(t *testing.T) {
 	//Incremented value by GetById
 	assert.Equal(t,123 + 1, int(score))
 }
+
+func TestMemCache_GetIdsInRange(t *testing.T) {
+	cache := NewMemCache()
+
+	FillItems(10)
+	for _, itm := range items {
+		cache.Set("test", itm)
+
+	}
+
+	total, err := cache.GetIdsInRange("test", 0, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, len(total))
+}
+
+func TestMemCache_Flush(t *testing.T) {
+	cache := NewMemCache()
+	var err error
+	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c33"
+	item := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	err = cache.Set("test", item)
+	assert.NoError(t, err)
+	_, err = cache.GetById("test", id, false)
+	assert.NoError(t, err)
+
+	err = cache.Flush()
+	assert.NoError(t, err)
+
+	val, err := cache.GetById("test", id, false)
+	assert.Error(t, err)
+
+	assert.NotEqual(t, item, val)
+}

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/satori/go.uuid"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -23,7 +22,6 @@ func FillItems(lng int) {
 }
 
 func BenchmarkRedisCache_Set(b *testing.B) {
-	logrus.SetLevel(logrus.TraceLevel)
 	b.StopTimer()
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(b, err)
@@ -44,7 +42,6 @@ func BenchmarkRedisCache_Set(b *testing.B) {
 }
 
 func BenchmarkRedisCache_GetAviable(b *testing.B) {
-	logrus.SetLevel(logrus.TraceLevel)
 	b.StopTimer()
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(b, err)
@@ -72,8 +69,6 @@ func BenchmarkRedisCache_GetAviable(b *testing.B) {
 
 
 func TestRedisCache_Set(t *testing.T) {
-	logrus.SetLevel(logrus.TraceLevel)
-
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(t, err)
 	if err != nil {
@@ -86,8 +81,6 @@ func TestRedisCache_Set(t *testing.T) {
 }
 
 func TestRedisCache_GetAviable(t *testing.T) {
-	logrus.SetLevel(logrus.TraceLevel)
-
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(t, err)
 	if err != nil {
@@ -102,8 +95,6 @@ func TestRedisCache_GetAviable(t *testing.T) {
 }
 
 func TestRedisCache_GetById(t *testing.T) {
-	logrus.SetLevel(logrus.TraceLevel)
-
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(t, err)
 	if err != nil {
@@ -119,8 +110,6 @@ func TestRedisCache_GetById(t *testing.T) {
 }
 
 func TestRedisCache_NewRedisCache(t *testing.T) {
-	logrus.SetLevel(logrus.TraceLevel)
-
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(t, err)
 	if err != nil {
@@ -132,8 +121,6 @@ func TestRedisCache_NewRedisCache(t *testing.T) {
 }
 
 func TestRedisCache_GetScore(t *testing.T) {
-	logrus.SetLevel(logrus.TraceLevel)
-
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(t, err)
 	if err != nil {
@@ -154,4 +141,45 @@ func TestRedisCache_GetScore(t *testing.T) {
 
 	cache.client.FlushAll()
 
+}
+
+func TestRedisCache_GetIdsInRange(t *testing.T) {
+	cache, err := NewRedisCache(redisaddr, redisdb)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	FillItems(10)
+	for _, itm := range items {
+		cache.Set("test", itm)
+
+	}
+
+	total, err := cache.GetIdsInRange("test", 0, 0)
+	assert.NoError(t, err)
+	assert.Equal(t, 10, len(total))
+
+	cache.client.FlushAll()
+}
+
+func TestRedisCache_Flush(t *testing.T) {
+	cache, err := NewRedisCache(redisaddr, redisdb)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c33"
+	item := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	err = cache.Set("test", item)
+	assert.NoError(t, err)
+	_, err = cache.GetById("test", id, false)
+	assert.NoError(t, err)
+
+	err = cache.Flush()
+	assert.NoError(t, err)
+
+	val, err := cache.GetById("test", id, false)
+	assert.Error(t, err)
+
+	assert.NotEqual(t, item, val)
 }

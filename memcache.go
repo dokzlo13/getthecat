@@ -72,8 +72,12 @@ func (m *MemCache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
 	}
 
 	m.valueslock.RLock()
-	val := m.values[prefix][item]
+	val, ok := m.values[prefix][item]
 	m.valueslock.RUnlock()
+
+	if !ok {
+		return ImgInfo{}, fmt.Errorf("Item not found")
+	}
 	return val, nil
 }
 
@@ -94,15 +98,24 @@ func (m *MemCache) GetById (prefix string, id string, increment bool) (ImgInfo, 
 		m.indexlock.Unlock()
 	}
 	m.valueslock.RLock()
-	val := m.values[prefix][id]
+	val, ok := m.values[prefix][id]
 	m.valueslock.RUnlock()
+
+	if !ok {
+		return ImgInfo{}, fmt.Errorf("Item not found")
+	}
 	return val, nil
 }
 
 func (m *MemCache) GetScore(prefix string, id string) (float64, error) {
 	m.indexlock.RLock()
-	val := m.index[prefix][id]
+	val, ok := m.index[prefix][id]
 	m.indexlock.RUnlock()
+
+	if !ok {
+		return 0, fmt.Errorf("Score not found")
+	}
+
 	return float64(val), nil
 }
 
@@ -110,10 +123,21 @@ func (m *MemCache) GetIdsInRange (prefix string, min int, max int) ([]string, er
 	var ids []string
 	m.indexlock.RLock()
 	for id, score := range m.index[prefix] {
-		if score > min && score < max {
+		if score >= min && score <= max {
 			ids = append(ids, id)
 		}
 	}
 	m.indexlock.RUnlock()
 	return ids, nil
+}
+
+func (m *MemCache) Flush() error {
+	m.indexlock.Lock()
+	m.index = make(map[string]map[string]int)
+	m.indexlock.Unlock()
+
+	m.valueslock.Lock()
+	m.values =  make(map[string]map[string]ImgInfo)
+	m.valueslock.Unlock()
+	return nil
 }
