@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/disintegration/imaging"
 	"github.com/h2non/filetype"
 	"github.com/imroc/req"
 	"github.com/satori/go.uuid"
@@ -15,6 +14,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	_ "image/jpeg"
+	_ "image/png"
+	_ "image/gif"
+
 )
 
 type ImgSaver struct {
@@ -115,7 +119,8 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 	wg := new(sync.WaitGroup)
 	InfosChan := make(chan ImgInfo)
 	if len(data) < amount {
-		return []ImgInfo{}, fmt.Errorf("imgsaver recieve less items, then amount")
+		log.Infoln("[ImgSaver] recieved less items, then requred")
+		return []ImgInfo{}, fmt.Errorf("imgsaver recieve less items, then requred")
 	}
 	wg.Add(len(data[:amount]))
 
@@ -138,10 +143,8 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 
 func (i ImgSaver) GetImage(id string) (*os.File, error) {
 	path := filepath.Join(i.Folder, id)
-	//var buf []byte
 
 	descr, err := os.OpenFile(path, os.O_RDWR, 0644)
-	//descr, err := os.Open(path)
 	if err != nil {
 		log.Infof("[ImgGetter] Error openning file: %s err: %v", path, err)
 		return nil, err
@@ -154,7 +157,7 @@ func (i ImgSaver) GetImage(id string) (*os.File, error) {
 func getImageDimension(file *os.File) (int, int) {
 	image, _, err := image.DecodeConfig(file)
 	if err != nil {
-		log.Tracef("[getImageDimension] Error collecting dimensions from image: %v\n", err)
+		log.Infof("[getImageDimension] Error collecting dimensions from image: %v", err)
 	}
 	return image.Width, image.Height
 }
@@ -198,35 +201,15 @@ func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processe
 	}
 
 	//Filetype checkout
-	_, err = filetype.Match(buf)
+	ftype, err := filetype.Match(buf)
 	if err != nil {
-		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, err)
+		log.Infof("[ImgGetter] Error extracting mimetype from: %s err: %v", imginfo.ID, err)
 		return
 	}
-	if !filetype.IsImage(buf) {
-		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, err)
+	if isimage:=filetype.IsImage(buf); !isimage {
+		log.Infof("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, ftype)
 		return
 	}
-
-	descr.Seek(0, 0)
-	if imginfo.Width != 800 || imginfo.Height != 600 {
-		descr.Seek(0, 0)
-		img, err := imaging.Decode(descr)
-		if err != nil {
-			log.Infof("[Preprocess] Error opening as image: %s with err \"%v\"", imginfo.ID, err)
-			return
-		}
-		dstImage800 := imaging.Fit(img, 800, 600, imaging.Lanczos)
-		descr.Seek(0, 0)
-		err = imaging.Encode(descr, dstImage800, imaging.PNG)
-		if err != nil {
-			log.Infof("[Preprocess] Error saving image: %s with err \"%v\"", imginfo.ID, err)
-			return
-		}
-		descr.Seek(0, 0)
-		imginfo.Width, imginfo.Height = getImageDimension(descr)
-	}
-
 
 	descr.Seek(0, 0)
 	checksum, err := md5Hash(descr)
@@ -278,7 +261,5 @@ func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 		close(InfosChan)
 	} ()
 	collectImagesInfo(InfosChan, &results)
-	//time.Sleep(time.Millisecond*50)
-
 	return results, nil
 }
