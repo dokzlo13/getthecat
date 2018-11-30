@@ -8,7 +8,6 @@ import (
 
 type ServingConf struct {
 	Mode     string `json:"mode"`
-	Filetype string `json:"filetype"`
 	ApiPath string `json:"apipath"`
 }
 
@@ -47,12 +46,8 @@ func ConfigCheck(conf Config) error {
 		return fmt.Errorf("Config invalid argument \"%s\" for \"server.mode\"", conf.ServingConf.Mode)
 	}
 
-	if !(conf.ServingConf.Filetype == "image" || conf.ServingConf.Filetype == "attachment") {
-		return fmt.Errorf("Config invalid argument \"%s\" for \"server.mode\"", conf.ServingConf.Filetype)
-	}
-
 	if conf.WatcherConf.CollectingMode == "urls" && conf.ServingConf.Mode == "cache" {
-		return fmt.Errorf("Config conflict for values \"server\" and \"watcher\"")
+		return fmt.Errorf("Config conflict for values \"server.mode: %s\" and \"watcher.collect: %s\"",conf.ServingConf.Mode , conf.WatcherConf.CollectingMode)
 	}
 	return nil
 }
