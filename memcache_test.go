@@ -36,7 +36,7 @@ func BenchmarkMemCache_GetAviable(b *testing.B) {
 	b.ResetTimer()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := cache.GetAviable("bench", false)
+		_, err := cache.GetActualId("bench")
 		//log.Println(items[i], err)
 		assert.NoError(b, err)
 	}
@@ -53,11 +53,12 @@ func TestMemCache_Set(t *testing.T) {
 
 func TestMemCache_GetAviable(t *testing.T) {
 	cache := NewMemCache()
-	wanted := ImgInfo{ID:"f3bc456e-44af-4e52-b9c2-cd88cf1c2c11", Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c11"
+	wanted := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
 	cache.Set("test", wanted)
-	recieved, err := cache.GetAviable("test", false)
+	recieved, err := cache.GetActualId("test")
 	assert.NoError(t, err)
-	assert.Equal(t, recieved, wanted)
+	assert.Equal(t, id, recieved)
 }
 
 func TestMemCache_GetById(t *testing.T) {
@@ -73,7 +74,7 @@ func TestMemCache_GetById(t *testing.T) {
 
 func TestMemCache_NewMemCache(t *testing.T) {
 	cache := NewMemCache()
-	_, err := cache.GetAviable("test", false)
+	_, err := cache.GetActualId("test")
 	assert.Error(t, err, fmt.Errorf("Empty set"))
 }
 
@@ -122,4 +123,17 @@ func TestMemCache_Flush(t *testing.T) {
 	assert.Error(t, err)
 
 	assert.NotEqual(t, item, val)
+}
+
+func TestMemCache_GetRandomId(t *testing.T) {
+	cache := NewMemCache()
+	var err error
+	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c33"
+	item := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	err = cache.Set("test", item)
+	assert.NoError(t, err)
+
+	val, err := cache.GetRandomId("test")
+	assert.NoError(t, err)
+	assert.Equal(t, id, val)
 }

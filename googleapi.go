@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"github.com/imroc/req"
 	log "github.com/sirupsen/logrus"
-	"math/rand"
-	"time"
 )
 
 type GoogleResponse struct {
@@ -95,10 +93,6 @@ func NewGoogleAPI(key string, cx string) GoogleAPI{
 	return api
 }
 
-func randrange(min, max int) int {
-	rand.Seed(time.Now().Unix())
-	return rand.Intn(max - min) + min
-}
 
 func (g GoogleAPI) SearchImages(query string) ([]ImgInfo, error) {
 	rnd := randrange(5, 20)

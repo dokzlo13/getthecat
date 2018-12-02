@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"github.com/go-redis/redis"
 	log "github.com/sirupsen/logrus"
 	"github.com/vmihailenco/msgpack"
@@ -15,7 +15,8 @@ type RedisCache struct {
 
 type Cache interface {
 	Set (prefix string, item ImgInfo) error
-	GetAviable (prefix string, increment bool) (ImgInfo, error)
+	GetRandomId(prefix string) (string, error)
+	GetActualId (prefix string) (string, error)
 	GetById (prefix string, id string, increment bool) (ImgInfo, error)
 	GetScore(prefix string, id string) (float64, error)
 	GetAllIds (prefix string) ([]string, error)
@@ -63,7 +64,7 @@ func (c RedisCache) Set (prefix string, item ImgInfo) error {
 
 }
 
-func (c RedisCache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
+func (c RedisCache) GetActualId (prefix string) (string, error) {
 	var err error
 
 	val, err := c.client.ZRangeByScore(prefix + "_index", redis.ZRangeBy{
@@ -74,18 +75,14 @@ func (c RedisCache) GetAviable (prefix string, increment bool) (ImgInfo, error) 
 	}).Result()
 
 	if err != nil {
-		return ImgInfo{}, err
+		return "", err
 	}
 
 	if len(val) < 1 {
 		log.Infoln("[RedisCache] Empty index results")
-		return ImgInfo{}, fmt.Errorf("Empty set")
+		return "", errors.New("empty set")
 	}
-
-	//b := []byte(val[0])
-
-	return c.GetById(prefix, val[0], increment)
-
+	return val[0], nil
 }
 
 func (c RedisCache) GetAllIds (prefix string) ([]string, error) {
@@ -116,7 +113,7 @@ func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo,
 
 	if itemdata == "" {
 		log.Infoln("[RedisCache] Empty data results")
-		return ImgInfo{}, fmt.Errorf("Empty set")
+		return ImgInfo{}, errors.New("empty set")
 	}
 
 	err = msgpack.Unmarshal([]byte(itemdata), &item)
@@ -124,6 +121,14 @@ func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo,
 		log.Infof("[RedisCache] Error unmarshalling %x... from cache", itemdata[:10])
 		return ImgInfo{}, err
 	}
+
+	wacthes, err := c.client.ZScore(prefix + "_index", id).Result()
+	if err != nil {
+		log.Infof("[RedisCache] Error collecting score for %s from cache", id)
+		return ImgInfo{}, err
+	}
+	item.Uses = int(wacthes)
+
 	if increment {
 		err = c.client.ZIncrBy(prefix + "_index", 1, id).Err()
 		if err != nil {
@@ -141,4 +146,29 @@ func (c RedisCache) GetScore(prefix string, id string) (float64, error) {
 
 func (c RedisCache) Flush() error {
 	return c.client.FlushDB().Err()
+}
+
+func (c RedisCache) GetRandomId(prefix string) (string, error) {
+	val, err := c.client.ZRangeByScore(prefix + "_index", redis.ZRangeBy{
+		Min: "-inf",
+		Max: "+inf",
+	}).Result()
+	if err != nil {
+		return "", err
+	}
+	if len(val) < 1 {
+		return "", errors.New("empty set")
+	}
+
+	rnd := randrange(1, len(val)+1)
+	log.Println(rnd)
+	val, err = c.client.ZRange(prefix + "_index", int64(rnd)-1, int64(rnd)-1).Result()
+	if err != nil {
+		return "", err
+	}
+	if len(val) < 1 {
+		return "", errors.New("empty set")
+	}
+
+	return val[0], nil
 }

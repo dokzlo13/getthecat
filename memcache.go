@@ -1,8 +1,8 @@
 package main
 
 import (
-"fmt"
-"sync"
+	"github.com/pkg/errors"
+	"sync"
 )
 
 const MaxInt = int(^uint(0) >> 1)
@@ -52,7 +52,7 @@ func (m *MemCache) Set (prefix string, item ImgInfo) error {
 	return nil
 }
 
-func (m *MemCache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
+func (m *MemCache) GetActualId (prefix string) (string, error) {
 	min :=  MaxInt
 	var item string
 	m.indexlock.Lock()
@@ -62,23 +62,12 @@ func (m *MemCache) GetAviable (prefix string, increment bool) (ImgInfo, error) {
 			item = k
 		}
 	}
-	if increment {
-		m.index[prefix][item] ++
-	}
 	m.indexlock.Unlock()
 
 	if item == "" {
-		return ImgInfo{}, fmt.Errorf("Empty set")
+		return "", errors.New("Empty set")
 	}
-
-	m.valueslock.RLock()
-	val, ok := m.values[prefix][item]
-	m.valueslock.RUnlock()
-
-	if !ok {
-		return ImgInfo{}, fmt.Errorf("Item not found")
-	}
-	return val, nil
+	return item, nil
 }
 
 func (m *MemCache) GetAllIds (prefix string) ([]string, error) {
@@ -91,18 +80,36 @@ func (m *MemCache) GetAllIds (prefix string) ([]string, error) {
 	return items, nil
 }
 
-func (m *MemCache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
-	if increment {
-		m.indexlock.Lock()
-		m.index[prefix][id] ++
-		m.indexlock.Unlock()
+func (m *MemCache) GetRandomId (prefix string) (string, error) {
+	m.indexlock.RLock()
+	defer m.indexlock.RUnlock()
+
+	rndidx := randrange(1, len(m.index[prefix])+1)
+	for k := range m.index[prefix] {
+		if rndidx == 1 {
+			return k, nil
+		}
+		rndidx --
 	}
+	return "", errors.New("empty set")
+}
+
+func (m *MemCache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
+	var views int
+	m.indexlock.Lock()
+	views = m.index[prefix][id]
+	if increment {
+		m.index[prefix][id] ++
+	}
+	m.indexlock.Unlock()
+
 	m.valueslock.RLock()
 	val, ok := m.values[prefix][id]
 	m.valueslock.RUnlock()
+	val.Uses = views
 
 	if !ok {
-		return ImgInfo{}, fmt.Errorf("Item not found")
+		return ImgInfo{}, errors.New("Item not found")
 	}
 	return val, nil
 }
@@ -113,7 +120,7 @@ func (m *MemCache) GetScore(prefix string, id string) (float64, error) {
 	m.indexlock.RUnlock()
 
 	if !ok {
-		return 0, fmt.Errorf("Score not found")
+		return 0, errors.New("Score not found")
 	}
 
 	return float64(val), nil

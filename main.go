@@ -14,6 +14,11 @@ import (
 
 var Watcher ImgWatcher
 
+func randrange(min, max int) int {
+	rand.Seed(time.Now().Unix())
+	return rand.Intn(max - min) + min
+}
+
 
 func SetupCloseHandler() {
 	c := make(chan os.Signal, 2)
@@ -92,10 +97,13 @@ func main(){
 		Imdb := NewImgDB(Api, conf.ImgFolder, endpoint)
 		go Watcher.WatchImages(Imdb)
 		subgroup := api.Group(endpoint)
-		subgroup.GET("/info", ServeRandomImgInfo(endpoint))
-		subgroup.GET("/info/:id", ServeImgInfo(endpoint))
-		subgroup.GET("/img", ServeRandomImg(endpoint, conf.ServingConf))
-		subgroup.GET("/img/:id", ServeImg(endpoint, conf.ServingConf))
+		subgroup.GET("/info/new", ServeActualImgInfo(endpoint))
+		subgroup.GET("/info/rand", ServeRandomImgInfo(endpoint))
+		subgroup.GET("/info/static/:id", ServeImgInfo(endpoint))
+
+		subgroup.GET("/img/new", ServeActualImg(endpoint, conf.ServingConf))
+		subgroup.GET("/img/rand", ServeRandomImg(endpoint, conf.ServingConf))
+		subgroup.GET("/img/static/:id", ServeImg(endpoint, conf.ServingConf))
 	}
 
 	go Watcher.StartSync()

@@ -1,9 +1,9 @@
 package main
 
 import (
-	"fmt"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"path/filepath"
@@ -126,6 +126,19 @@ func GetFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 	return img, nil
 }
 
+func GetRandomFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
+	var img ImgInfo
+	tx := DB.Begin()
+	if err:=tx.Error; err == nil {
+		defer tx.Commit()
+		tx.Model(&ImgInfo{}).Where("type = ?", prefix).Order("RANDOM()").First(&img)
+	} else {
+		log.Errorf("Database reading failed with \"%v\"", err)
+		return ImgInfo{}, err
+	}
+	return img, nil
+}
+
 func GetFromDbById(DB *gorm.DB, prefix string, id string) (ImgInfo, error) {
 	var img ImgInfo
 	tx := DB.Begin()
@@ -178,35 +191,69 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 	return watcher
 }
 
-func (ag ImgWatcher) GetImg(prefix string, incrUses bool) (ImgInfo, error) {
+func (ag ImgWatcher) GetActualImg(prefix string, incrUses bool) (ImgInfo, error) {
 	var img ImgInfo
 	var err error
+	var imgId string
 
-	img, err = ag.Cache.GetAviable(prefix, incrUses)
+	imgId, err = ag.Cache.GetActualId(prefix)
+	if err != nil {
+		log.Infoln("No actual image in cache")
+	}
+	img, err = ag.Cache.GetById(prefix, imgId, incrUses)
 	//Retrying with DB request
 	if err != nil {
 		img, err = GetFromDB(ag.DB, prefix)
 		if img.ID == "" {
 			//Break here, if nothing found
-			return ImgInfo{}, fmt.Errorf("No aviable images")
+			return ImgInfo{}, errors.New("No aviable images")
 		} else {
 			err = ag.Cache.Set(prefix, img)
 			if err != nil {
-				log.Debugf("[GetImg] Cache from DB updating failed with error %v", err)
+				log.Debugf("[GetActualImg] Cache from DB updating failed with error %v", err)
 			} else {
-				log.Debugf("[GetImg] Cache updated from DB!")
+				log.Debugf("[GetActualImg] Cache updated from DB!")
 			}
 		}
 	}
 	//Check last attempt
 	if img.ID == "" {
-		return ImgInfo{}, fmt.Errorf("No aviable images")
+		return ImgInfo{}, errors.New("No aviable images")
 	}
 
-	if !incrUses {
-		return img, nil
+	return img, nil
+}
+
+func (ag ImgWatcher) GetRandomImg(prefix string, incrUses bool) (ImgInfo, error) {
+	var img ImgInfo
+	var err error
+	var imgId string
+
+	imgId, err = ag.Cache.GetRandomId(prefix)
+	if err != nil {
+		log.Infoln("No random image in cache")
 	}
-	//go retry(20, time.Millisecond*10,  updateItem(ag.DB, img))
+	img, err = ag.Cache.GetById(prefix, imgId, incrUses)
+	//Retrying with DB request
+	if err != nil {
+		img, err = GetRandomFromDB(ag.DB, prefix)
+		if img.ID == "" {
+			//Break here, if nothing found
+			return ImgInfo{}, errors.New("No aviable images")
+		} else {
+			err = ag.Cache.Set(prefix, img)
+			if err != nil {
+				log.Debugf("[GetActualImg] Cache from DB updating failed with error %v", err)
+			} else {
+				log.Debugf("[GetActualImg] Cache updated from DB!")
+			}
+		}
+	}
+	//Check last attempt
+	if img.ID == "" {
+		return ImgInfo{}, errors.New("No aviable images")
+	}
+
 	return img, nil
 }
 
@@ -221,19 +268,16 @@ func (ag ImgWatcher) GetImgById(prefix string, id string, incrUses bool) (ImgInf
 		if img.ID == "" {
 			log.Debugf("[GetImgById] Error collecting img info for %s from DB", err)
 			//Break here, if nothing found
-			return ImgInfo{}, fmt.Errorf("No aviable images")
+			return ImgInfo{}, errors.New("No aviable images")
 		} else {
 			log.Debugf("[GetImgById] Cache updated from DB with result %v", ag.Cache.Set(prefix, img))
 		}
 	}
 
 	if img.ID == "" {
-		return ImgInfo{}, fmt.Errorf("No aviable images")
+		return ImgInfo{}, errors.New("No aviable images")
 	}
 
-	if !incrUses {
-		return img, nil
-	}
 	return img, nil
 }
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/satori/go.uuid"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -58,7 +57,7 @@ func BenchmarkRedisCache_GetAviable(b *testing.B) {
 	b.ResetTimer()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := cache.GetAviable("bench", false)
+		_, err := cache.GetActualId("bench")
 		//log.Println(items[i], err)
 		assert.NoError(b, err)
 	}
@@ -80,17 +79,18 @@ func TestRedisCache_Set(t *testing.T) {
 	cache.client.FlushAll()
 }
 
-func TestRedisCache_GetAviable(t *testing.T) {
+func TestRedisCache_GetActualId(t *testing.T) {
 	cache, err := NewRedisCache(redisaddr, redisdb)
 	assert.NoError(t, err)
 	if err != nil {
 		return
 	}
-	wanted := ImgInfo{ID:"f3bc456e-44af-4e52-b9c2-cd88cf1c2c11", Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c11"
+	wanted := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
 	cache.Set("test", wanted)
-	recieved, err := cache.GetAviable("test", false)
+	recieved, err := cache.GetActualId("test")
 	assert.NoError(t, err)
-	assert.Equal(t, recieved, wanted)
+	assert.Equal(t, recieved, id)
 	cache.client.FlushAll()
 }
 
@@ -115,8 +115,8 @@ func TestRedisCache_NewRedisCache(t *testing.T) {
 	if err != nil {
 		return
 	}
-	_, err = cache.GetAviable("test", false)
-	assert.Error(t, err, fmt.Errorf("Empty set"))
+	_, err = cache.GetActualId("test")
+	assert.Error(t, err)
 	cache.client.FlushAll()
 }
 
@@ -182,4 +182,19 @@ func TestRedisCache_Flush(t *testing.T) {
 	assert.Error(t, err)
 
 	assert.NotEqual(t, item, val)
+}
+
+func TestRedisCache_GetRandomId(t *testing.T) {
+	cache, err := NewRedisCache(redisaddr, redisdb)
+	assert.NoError(t, err)
+	if err != nil {
+		return
+	}
+	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c44"
+	item := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	err = cache.Set("test", item)
+	assert.NoError(t, err)
+	recvdId, err:= cache.GetRandomId("test")
+	assert.NoError(t, err)
+	assert.Equal(t, id, recvdId)
 }
