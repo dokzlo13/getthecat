@@ -11,16 +11,15 @@ import (
 	"time"
 )
 
-
 type ImgWatcher struct {
-	DB *gorm.DB
-	renew int
+	DB             *gorm.DB
+	renew          int
 	MinimalAviable int
-	MaximalUses int
+	MaximalUses    int
 	CollectingMode string
-	Cache Cache
-	ImgDbsMutex *sync.RWMutex
-	ImgDBs map[string]ImgDB
+	Cache          Cache
+	ImgDbsMutex    *sync.RWMutex
+	ImgDBs         map[string]ImgDB
 }
 
 type stop struct {
@@ -47,8 +46,6 @@ func retry(attempts int, sleep time.Duration, f func() error) error {
 	return nil
 }
 
-
-
 func (ag ImgWatcher) syncCacheToDb(prefix string) error {
 	log.Tracef("[Sync] Attempting to sync cache for \"%s\" with DB...", prefix)
 	knownIds, err := ag.Cache.GetAllIds(prefix)
@@ -67,7 +64,7 @@ func (ag ImgWatcher) syncCacheToDb(prefix string) error {
 		states[id] = int(views)
 	}
 
-	for _, id:= range knownIds{
+	for _, id := range knownIds {
 		data, err := ag.Cache.GetById(prefix, id, false)
 		if err != nil {
 			log.Infof("[Sync] Can not collect data for %s from cache", id)
@@ -76,19 +73,18 @@ func (ag ImgWatcher) syncCacheToDb(prefix string) error {
 		infos[id] = data
 	}
 
-
 	tx := ag.DB.Begin()
-	if err:=tx.Error; err != nil {
+	if err := tx.Error; err != nil {
 		log.Tracef("[Sync] Error creating transaction for sync")
 		return err
 	}
 	for _, id := range knownIds {
 		item := infos[id]
 		item.Uses = states[id]
-		tx.FirstOrCreate(&item, ImgInfo{ID:id})
+		tx.FirstOrCreate(&item, ImgInfo{ID: id})
 		tx.Exec("UPDATE img_infos SET uses = ? WHERE id = ? AND type = ?", states[id], id, prefix)
 	}
-	if err:=tx.Commit().Error; err != nil {
+	if err := tx.Commit().Error; err != nil {
 		log.Infof("[Sync] Error commiting transaction for sync")
 		tx.Rollback()
 		return err
@@ -111,12 +107,10 @@ func (ag ImgWatcher) syncDbToCache() {
 	log.Warningln("[Watcher] Cache initalized!")
 }
 
-
-
 func GetFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 	var img ImgInfo
 	tx := DB.Begin()
-	if err:=tx.Error; err == nil {
+	if err := tx.Error; err == nil {
 		defer tx.Commit()
 		tx.Model(&ImgInfo{}).Where("type = ?", prefix).Order("uses ASC").First(&img)
 	} else {
@@ -129,7 +123,7 @@ func GetFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 func GetRandomFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 	var img ImgInfo
 	tx := DB.Begin()
-	if err:=tx.Error; err == nil {
+	if err := tx.Error; err == nil {
 		defer tx.Commit()
 		tx.Model(&ImgInfo{}).Where("type = ?", prefix).Order("RANDOM()").First(&img)
 	} else {
@@ -142,7 +136,7 @@ func GetRandomFromDB(DB *gorm.DB, prefix string) (ImgInfo, error) {
 func GetFromDbById(DB *gorm.DB, prefix string, id string) (ImgInfo, error) {
 	var img ImgInfo
 	tx := DB.Begin()
-	if err:=tx.Error; err == nil {
+	if err := tx.Error; err == nil {
 		defer tx.Commit()
 		tx.Model(&ImgInfo{}).Where("id = ? AND type = ?", id, prefix).Order("uses ASC").First(&img)
 	} else {
@@ -153,7 +147,7 @@ func GetFromDbById(DB *gorm.DB, prefix string, id string) (ImgInfo, error) {
 }
 
 func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
-	if  debug == 3 {
+	if debug == 3 {
 		db = db.Debug()
 		//db.SetLogger(log.StandardLogger())
 	}
@@ -176,15 +170,14 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 		}
 	}
 
-
 	watcher := ImgWatcher{DB: db,
-		MinimalAviable:conf.MinimalAviable,
-		MaximalUses:conf.MaximumUses,
-		renew:conf.Checktime,
-		CollectingMode:conf.CollectingMode,
-		Cache:cache,
-		ImgDBs: map[string]ImgDB{},
-		ImgDbsMutex: new(sync.RWMutex),
+		MinimalAviable: conf.MinimalAviable,
+		MaximalUses:    conf.MaximumUses,
+		renew:          conf.Checktime,
+		CollectingMode: conf.CollectingMode,
+		Cache:          cache,
+		ImgDBs:         map[string]ImgDB{},
+		ImgDbsMutex:    new(sync.RWMutex),
 	}
 
 	watcher.syncDbToCache()
@@ -281,7 +274,6 @@ func (ag ImgWatcher) GetImgById(prefix string, id string, incrUses bool) (ImgInf
 	return img, nil
 }
 
-
 func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
 	log.Warningf("[Watcher] Watcher started for prefix \"%s\"", ImgDB.Prefix)
 	ag.ImgDbsMutex.Lock()
@@ -307,7 +299,7 @@ func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
 			}
 		}
 		log.Debugln("[Watcher] Cache updated!")
-		}
+	}
 
 	for {
 		var count int
@@ -331,7 +323,7 @@ func (ag *ImgWatcher) WatchImages(ImgDB ImgDB) {
 			} else {
 				items := make([]ImgInfo, len(collected))
 				log.Debugf("[Watcher] Collected %d new items from ImgParser for prefix %s", len(items), ImgDB.Prefix)
-				for idx, img := range collected{
+				for idx, img := range collected {
 					items[idx] = img
 					items[idx].Uses = 0
 					items[idx].Type = ImgDB.Prefix
@@ -362,10 +354,6 @@ func (ag ImgWatcher) Sync() error {
 func (ag ImgWatcher) StartSync() {
 	log.Warningln("[Watcher] DB sync task started!")
 
-	if ag.CollectingMode != "urls" {
-		retry(5, time.Millisecond, func() error {return ag.RemoveEmptyFiles()})
-	}
-
 	for {
 		ag.Sync()
 		time.Sleep(time.Second * time.Duration(ag.renew))
@@ -381,7 +369,7 @@ func (ag ImgWatcher) RemoveEmptyFiles() error {
 	log.Warningln("[RemoveEmptyFiles] Collecting mode switched to \"files\", removing empty files from DB")
 
 	tx := ag.DB.Begin()
-	if err:=tx.Error; err != nil {
+	if err := tx.Error; err != nil {
 		log.Errorf("[RemoveEmptyFiles] Database transaction failed with \"%v\"", err)
 		return err
 	}

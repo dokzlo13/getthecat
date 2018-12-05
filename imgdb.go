@@ -7,17 +7,17 @@ import (
 )
 
 type ImgDB struct {
-	Prefix string
-	Root string
+	Prefix   string
+	Root     string
 	Searcher Searhcer
-	saver ImgSaver
+	saver    ImgSaver
 }
 
-func NewImgDB (searcher Searhcer, root string, prefix string) ImgDB {
-	return ImgDB{Root:root,
-				 Prefix:prefix,
-				 Searcher: searcher,
-	  			 saver:NewImageSaver(filepath.Join(root, prefix))}
+func NewImgDB(searcher Searhcer, root string, prefix string) ImgDB {
+	return ImgDB{Root: root,
+		Prefix:   prefix,
+		Searcher: searcher,
+		saver:    NewImageSaver(filepath.Join(root, prefix))}
 }
 
 func (db ImgDB) NewImgs(amount int) ([]ImgInfo, error) {

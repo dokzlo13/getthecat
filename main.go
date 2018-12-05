@@ -16,9 +16,8 @@ var Watcher ImgWatcher
 
 func randrange(min, max int) int {
 	rand.Seed(time.Now().Unix())
-	return rand.Intn(max - min) + min
+	return rand.Intn(max-min) + min
 }
-
 
 func SetupCloseHandler() {
 	c := make(chan os.Signal, 2)
@@ -41,8 +40,7 @@ func SetupCloseHandler() {
 	}()
 }
 
-
-func main(){
+func main() {
 	var Api Searhcer
 
 	rand.Seed(time.Now().Unix())
@@ -85,7 +83,7 @@ func main(){
 	)
 
 	var api *gin.RouterGroup
-	if apipath:=conf.ServingConf.ApiPath; apipath != "" {
+	if apipath := conf.ServingConf.ApiPath; apipath != "" {
 		api = router.Group(apipath)
 	} else {
 		api = router.Group("")

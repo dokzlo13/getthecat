@@ -79,28 +79,26 @@ type GoogleResponse struct {
 	} `json:"error"`
 }
 
-
 type GoogleAPI struct {
 	ApiKey string
 	apiUrl string
 	params req.Param
 }
 
-func NewGoogleAPI(key string, cx string) GoogleAPI{
-	api := GoogleAPI{ApiKey:key,
-		apiUrl:"https://www.googleapis.com/customsearch/v1",
-		params:req.Param{"key":key, "cx":cx, "searchType":"image"}}
+func NewGoogleAPI(key string, cx string) GoogleAPI {
+	api := GoogleAPI{ApiKey: key,
+		apiUrl: "https://www.googleapis.com/customsearch/v1",
+		params: req.Param{"key": key, "cx": cx, "searchType": "image"}}
 	return api
 }
-
 
 func (g GoogleAPI) SearchImages(query string) ([]ImgInfo, error) {
 	rnd := randrange(5, 20)
 	log.Tracef("[GoogleApi] Sending to google: query:\"%s\" page:\"%d\"", query, rnd)
-	resp, err := req.Get(g.apiUrl, g.params, req.Param{"q":query,
-	"filter":"1",
-	"lowRange":rnd-5,
-	"highRange":rnd,
+	resp, err := req.Get(g.apiUrl, g.params, req.Param{"q": query,
+		"filter":    "1",
+		"lowRange":  rnd - 5,
+		"highRange": rnd,
 	})
 	if err != nil {
 		log.Infof("[GoogleApi] error requesting google: %v", err)
@@ -117,12 +115,9 @@ func (g GoogleAPI) SearchImages(query string) ([]ImgInfo, error) {
 	}
 
 	var imgUrls []ImgInfo
-	for _, itm := range jsonData.Items{
-		imgUrls = append(imgUrls, ImgInfo{Origin:itm.Link, Width:itm.Image.Width, Height:itm.Image.Height})
+	for _, itm := range jsonData.Items {
+		imgUrls = append(imgUrls, ImgInfo{Origin: itm.Link, Width: itm.Image.Width, Height: itm.Image.Height})
 	}
 
 	return imgUrls, nil
 }
-
-
-

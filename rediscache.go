@@ -12,14 +12,13 @@ type RedisCache struct {
 	client *redis.Client
 }
 
-
 type Cache interface {
-	Set (prefix string, item ImgInfo) error
+	Set(prefix string, item ImgInfo) error
 	GetRandomId(prefix string) (string, error)
-	GetActualId (prefix string) (string, error)
-	GetById (prefix string, id string, increment bool) (ImgInfo, error)
+	GetActualId(prefix string) (string, error)
+	GetById(prefix string, id string, increment bool) (ImgInfo, error)
 	GetScore(prefix string, id string) (float64, error)
-	GetAllIds (prefix string) ([]string, error)
+	GetAllIds(prefix string) ([]string, error)
 	GetIdsInRange(prefix string, min int, max int) ([]string, error)
 	Flush() error
 }
@@ -28,7 +27,7 @@ func NewRedisCache(addr string, db int) (*RedisCache, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr:     addr,
 		Password: "", // no password set
-		DB:       db,  // use default DB
+		DB:       db, // use default DB
 	})
 	_, err := client.Ping().Result()
 	if err != nil {
@@ -38,13 +37,13 @@ func NewRedisCache(addr string, db int) (*RedisCache, error) {
 		return nil, err
 	}
 	cache := &RedisCache{client: client}
-	if err:= cache.Flush(); err != nil {
-		return nil ,err
+	if err := cache.Flush(); err != nil {
+		return nil, err
 	}
 	return cache, nil
 }
 
-func (c RedisCache) Set (prefix string, item ImgInfo) error {
+func (c RedisCache) Set(prefix string, item ImgInfo) error {
 	b, err := msgpack.Marshal(&item)
 	if err != nil {
 		log.Infof("[RedisCache] Error marshalling item %s in cache", item.ID)
@@ -56,7 +55,7 @@ func (c RedisCache) Set (prefix string, item ImgInfo) error {
 		log.Infof("[RedisCache] Error saving item %s in cache", item.ID)
 	}
 
-	err = c.client.ZAdd(prefix + "_index", redis.Z{Member:item.ID, Score:float64(item.Uses)}).Err()
+	err = c.client.ZAdd(prefix+"_index", redis.Z{Member: item.ID, Score: float64(item.Uses)}).Err()
 	if err != nil {
 		log.Infof("[RedisCache] Error saving index %s in cache", item.ID)
 	}
@@ -64,14 +63,14 @@ func (c RedisCache) Set (prefix string, item ImgInfo) error {
 
 }
 
-func (c RedisCache) GetActualId (prefix string) (string, error) {
+func (c RedisCache) GetActualId(prefix string) (string, error) {
 	var err error
 
-	val, err := c.client.ZRangeByScore(prefix + "_index", redis.ZRangeBy{
-		Min: "-inf",
-		Max: "+inf",
+	val, err := c.client.ZRangeByScore(prefix+"_index", redis.ZRangeBy{
+		Min:    "-inf",
+		Max:    "+inf",
 		Offset: 0,
-		Count: 1,
+		Count:  1,
 	}).Result()
 
 	if err != nil {
@@ -85,12 +84,12 @@ func (c RedisCache) GetActualId (prefix string) (string, error) {
 	return val[0], nil
 }
 
-func (c RedisCache) GetAllIds (prefix string) ([]string, error) {
+func (c RedisCache) GetAllIds(prefix string) ([]string, error) {
 	return c.client.HKeys(prefix).Result()
 }
 
-func (c RedisCache) GetIdsInRange (prefix string, min int, max int) ([]string, error) {
-	items, err := c.client.ZRangeByScoreWithScores(prefix + "_index", redis.ZRangeBy{Min:strconv.Itoa(min), Max:strconv.Itoa(min)}).Result()
+func (c RedisCache) GetIdsInRange(prefix string, min int, max int) ([]string, error) {
+	items, err := c.client.ZRangeByScoreWithScores(prefix+"_index", redis.ZRangeBy{Min: strconv.Itoa(min), Max: strconv.Itoa(min)}).Result()
 	if err != nil {
 		return []string{}, err
 	}
@@ -101,7 +100,7 @@ func (c RedisCache) GetIdsInRange (prefix string, min int, max int) ([]string, e
 	return data, nil
 }
 
-func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
+func (c RedisCache) GetById(prefix string, id string, increment bool) (ImgInfo, error) {
 	var item ImgInfo
 	var err error
 
@@ -122,7 +121,7 @@ func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo,
 		return ImgInfo{}, err
 	}
 
-	wacthes, err := c.client.ZScore(prefix + "_index", id).Result()
+	wacthes, err := c.client.ZScore(prefix+"_index", id).Result()
 	if err != nil {
 		log.Infof("[RedisCache] Error collecting score for %s from cache", id)
 		return ImgInfo{}, err
@@ -130,7 +129,7 @@ func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo,
 	item.Uses = int(wacthes)
 
 	if increment {
-		err = c.client.ZIncrBy(prefix + "_index", 1, id).Err()
+		err = c.client.ZIncrBy(prefix+"_index", 1, id).Err()
 		if err != nil {
 			log.Infof("[RedisCache] Error incrementing index %s in cache", item.ID)
 			return ImgInfo{}, err
@@ -141,7 +140,7 @@ func (c RedisCache) GetById (prefix string, id string, increment bool) (ImgInfo,
 }
 
 func (c RedisCache) GetScore(prefix string, id string) (float64, error) {
-	return c.client.ZScore(prefix + "_index", id).Result()
+	return c.client.ZScore(prefix+"_index", id).Result()
 }
 
 func (c RedisCache) Flush() error {
@@ -149,7 +148,7 @@ func (c RedisCache) Flush() error {
 }
 
 func (c RedisCache) GetRandomId(prefix string) (string, error) {
-	val, err := c.client.ZRangeByScore(prefix + "_index", redis.ZRangeBy{
+	val, err := c.client.ZRangeByScore(prefix+"_index", redis.ZRangeBy{
 		Min: "-inf",
 		Max: "+inf",
 	}).Result()
@@ -162,7 +161,7 @@ func (c RedisCache) GetRandomId(prefix string) (string, error) {
 
 	rnd := randrange(1, len(val)+1)
 	log.Println(rnd)
-	val, err = c.client.ZRange(prefix + "_index", int64(rnd)-1, int64(rnd)-1).Result()
+	val, err = c.client.ZRange(prefix+"_index", int64(rnd)-1, int64(rnd)-1).Result()
 	if err != nil {
 		return "", err
 	}

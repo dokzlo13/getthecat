@@ -15,14 +15,13 @@ import (
 	"strings"
 	"sync"
 
+	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	_ "image/gif"
-
 )
 
 type ImgSaver struct {
-	 Folder string
+	Folder string
 }
 
 func NewImageSaver(folder string) ImgSaver {
@@ -32,7 +31,7 @@ func NewImageSaver(folder string) ImgSaver {
 			log.Fatalf("Error creating images folder for ImgSaver \"%s\"", folder)
 		}
 	}
-	return ImgSaver{Folder:folder}
+	return ImgSaver{Folder: folder}
 }
 
 func (i ImgSaver) GetImagesFiles(searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
@@ -61,9 +60,9 @@ func (i ImgSaver) GetImagesUrls(searcher Searhcer, query string, amount int) ([]
 	lng := len(data)
 	log.Tracef("[ImgSaver] Request for seacrh is successfull! collected:%d items", lng)
 	var results []ImgInfo
-	for c:=0; c < amount && c < lng; c++{
+	for c := 0; c < amount && c < lng; c++ {
 		url := data[c].Origin
-		id, _ := uuid.NewV4()
+		id := uuid.NewV4()
 		data[c].ID = id.String()
 		log.Debugf("[ImgSaver] Collecting img ORIGINS %s SUCCEED", url)
 		results = append(results, data[c])
@@ -91,7 +90,7 @@ func downloadImage(imginfo ImgInfo, rootpath string, wg *sync.WaitGroup, process
 		log.Infof("[ImgSaver] Collecting img %s FAILED", url)
 		return
 	}
-	id, _ := uuid.NewV4()
+	id := uuid.NewV4()
 	path := filepath.Join(rootpath, id.String())
 
 	err = r.ToFile(path)
@@ -124,14 +123,13 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 	}
 	wg.Add(len(data[:amount]))
 
-
 	for _, img := range data[:amount] {
 		go downloadImage(img, i.Folder, wg, InfosChan)
 	}
-	go func (){
+	go func() {
 		wg.Wait()
 		close(InfosChan)
-	} ()
+	}()
 	collectImagesInfo(InfosChan, &results)
 
 	if len(results) == 0 {
@@ -153,7 +151,6 @@ func (i ImgSaver) GetImage(id string) (*os.File, error) {
 
 }
 
-
 func getImageDimension(file *os.File) (int, int) {
 	image, _, err := image.DecodeConfig(file)
 	if err != nil {
@@ -162,11 +159,9 @@ func getImageDimension(file *os.File) (int, int) {
 	return image.Width, image.Height
 }
 
-
 func md5Hash(file *os.File) (string, error) {
 	//Initialize variable returnMD5String now in case an error has to be returned
 	var returnMD5String string
-
 
 	//Open a new hash interface to write to
 	hash := md5.New()
@@ -206,7 +201,7 @@ func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processe
 		log.Infof("[ImgGetter] Error extracting mimetype from: %s err: %v", imginfo.ID, err)
 		return
 	}
-	if isimage:=filetype.IsImage(buf); !isimage {
+	if isimage := filetype.IsImage(buf); !isimage {
 		log.Infof("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, ftype)
 		return
 	}
@@ -240,13 +235,11 @@ func collectImagesInfo(channel chan ImgInfo, InfosList *[]ImgInfo) {
 	}
 }
 
-
-func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
+func (i ImgSaver) preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 	log.Trace("[Preprocess] Starting preprocessing images!")
 	var results []ImgInfo
 	wg := new(sync.WaitGroup)
 	InfosChan := make(chan ImgInfo)
-
 
 	for _, img := range imgs {
 		descr, err := i.GetImage(img.ID)
@@ -257,10 +250,10 @@ func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 		wg.Add(1)
 		go preprocessImg(img, descr, wg, InfosChan)
 	}
-	go func (){
+	go func() {
 		wg.Wait()
 		close(InfosChan)
-	} ()
+	}()
 	collectImagesInfo(InfosChan, &results)
 	return results, nil
 }

@@ -7,13 +7,12 @@ import (
 
 const MaxInt = int(^uint(0) >> 1)
 
-
 type MemCache struct {
 	indexlock sync.RWMutex
-	index map[string]map[string]int
+	index     map[string]map[string]int
 
 	valueslock sync.RWMutex
-	values map[string]map[string]ImgInfo
+	values     map[string]map[string]ImgInfo
 }
 
 type Cached struct {
@@ -30,8 +29,7 @@ func NewMemCache() *MemCache {
 	}
 }
 
-
-func (m *MemCache) Set (prefix string, item ImgInfo) error {
+func (m *MemCache) Set(prefix string, item ImgInfo) error {
 	m.valueslock.Lock()
 	if m.values[prefix] == nil {
 		m.values[prefix] = map[string]ImgInfo{item.ID: item}
@@ -52,8 +50,8 @@ func (m *MemCache) Set (prefix string, item ImgInfo) error {
 	return nil
 }
 
-func (m *MemCache) GetActualId (prefix string) (string, error) {
-	min :=  MaxInt
+func (m *MemCache) GetActualId(prefix string) (string, error) {
+	min := MaxInt
 	var item string
 	m.indexlock.Lock()
 	for k, v := range m.index[prefix] {
@@ -70,7 +68,7 @@ func (m *MemCache) GetActualId (prefix string) (string, error) {
 	return item, nil
 }
 
-func (m *MemCache) GetAllIds (prefix string) ([]string, error) {
+func (m *MemCache) GetAllIds(prefix string) ([]string, error) {
 	var items []string
 	m.indexlock.RLock()
 	for k := range m.index[prefix] {
@@ -80,7 +78,7 @@ func (m *MemCache) GetAllIds (prefix string) ([]string, error) {
 	return items, nil
 }
 
-func (m *MemCache) GetRandomId (prefix string) (string, error) {
+func (m *MemCache) GetRandomId(prefix string) (string, error) {
 	m.indexlock.RLock()
 	defer m.indexlock.RUnlock()
 
@@ -89,17 +87,17 @@ func (m *MemCache) GetRandomId (prefix string) (string, error) {
 		if rndidx == 1 {
 			return k, nil
 		}
-		rndidx --
+		rndidx--
 	}
 	return "", errors.New("empty set")
 }
 
-func (m *MemCache) GetById (prefix string, id string, increment bool) (ImgInfo, error) {
+func (m *MemCache) GetById(prefix string, id string, increment bool) (ImgInfo, error) {
 	var views int
 	m.indexlock.Lock()
 	views = m.index[prefix][id]
 	if increment {
-		m.index[prefix][id] ++
+		m.index[prefix][id]++
 	}
 	m.indexlock.Unlock()
 
@@ -126,7 +124,7 @@ func (m *MemCache) GetScore(prefix string, id string) (float64, error) {
 	return float64(val), nil
 }
 
-func (m *MemCache) GetIdsInRange (prefix string, min int, max int) ([]string, error) {
+func (m *MemCache) GetIdsInRange(prefix string, min int, max int) ([]string, error) {
 	var ids []string
 	m.indexlock.RLock()
 	for id, score := range m.index[prefix] {
@@ -144,7 +142,7 @@ func (m *MemCache) Flush() error {
 	m.indexlock.Unlock()
 
 	m.valueslock.Lock()
-	m.values =  make(map[string]map[string]ImgInfo)
+	m.values = make(map[string]map[string]ImgInfo)
 	m.valueslock.Unlock()
 	return nil
 }

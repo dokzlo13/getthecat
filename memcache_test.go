@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-
 func BenchmarkMemCache_SetCache(b *testing.B) {
 	logrus.SetLevel(logrus.TraceLevel)
 	b.StopTimer()
@@ -25,7 +24,7 @@ func BenchmarkMemCache_SetCache(b *testing.B) {
 
 func BenchmarkMemCache_GetAviable(b *testing.B) {
 	b.StopTimer()
-	cache:= NewMemCache()
+	cache := NewMemCache()
 	FillItems(b.N)
 
 	for i := 0; i < b.N; i++ {
@@ -43,10 +42,9 @@ func BenchmarkMemCache_GetAviable(b *testing.B) {
 	b.StopTimer()
 }
 
-
 func TestMemCache_Set(t *testing.T) {
 	cache := NewMemCache()
-	item := ImgInfo{ID:"f3bc456e-44af-4e52-b9c2-cd88cf1c2c00", Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	item := ImgInfo{ID: "f3bc456e-44af-4e52-b9c2-cd88cf1c2c00", Uses: 1, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	err := cache.Set("test", item)
 	assert.NoError(t, err)
 }
@@ -54,7 +52,7 @@ func TestMemCache_Set(t *testing.T) {
 func TestMemCache_GetAviable(t *testing.T) {
 	cache := NewMemCache()
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c11"
-	wanted := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	wanted := ImgInfo{ID: id, Uses: 1, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	cache.Set("test", wanted)
 	recieved, err := cache.GetActualId("test")
 	assert.NoError(t, err)
@@ -65,7 +63,7 @@ func TestMemCache_GetById(t *testing.T) {
 	logrus.SetLevel(logrus.TraceLevel)
 	cache := NewMemCache()
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c22"
-	wanted := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	wanted := ImgInfo{ID: id, Uses: 1, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	cache.Set("test", wanted)
 	recieved, err := cache.GetById("test", id, true)
 	assert.NoError(t, err)
@@ -81,7 +79,7 @@ func TestMemCache_NewMemCache(t *testing.T) {
 func TestMemCache_GetScore(t *testing.T) {
 	cache := NewMemCache()
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c22"
-	wanted := ImgInfo{ID:id, Uses:123, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	wanted := ImgInfo{ID: id, Uses: 123, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	cache.Set("test", wanted)
 	recieved, err := cache.GetById("test", id, true)
 	assert.NoError(t, err)
@@ -89,7 +87,7 @@ func TestMemCache_GetScore(t *testing.T) {
 	score, err := cache.GetScore("test", id)
 	assert.NoError(t, err)
 	//Incremented value by GetById
-	assert.Equal(t,123 + 1, int(score))
+	assert.Equal(t, 123+1, int(score))
 }
 
 func TestMemCache_GetIdsInRange(t *testing.T) {
@@ -110,7 +108,7 @@ func TestMemCache_Flush(t *testing.T) {
 	cache := NewMemCache()
 	var err error
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c33"
-	item := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	item := ImgInfo{ID: id, Uses: 1, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	err = cache.Set("test", item)
 	assert.NoError(t, err)
 	_, err = cache.GetById("test", id, false)
@@ -129,7 +127,7 @@ func TestMemCache_GetRandomId(t *testing.T) {
 	cache := NewMemCache()
 	var err error
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c33"
-	item := ImgInfo{ID:id, Uses:1, Height:1, Width:1, Origin:"test", Filesize:1, Checksum:"test", Type:"test", Path:"tespath"}
+	item := ImgInfo{ID: id, Uses: 1, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	err = cache.Set("test", item)
 	assert.NoError(t, err)
 

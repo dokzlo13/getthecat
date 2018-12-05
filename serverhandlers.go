@@ -6,7 +6,6 @@ import (
 	"os"
 )
 
-
 func ServeImgInfo(prefix string) func(c *gin.Context) {
 	return func(c *gin.Context) {
 		imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), false)
@@ -112,7 +111,6 @@ func ServeActualImg(prefix string, conf ServingConf) func(c *gin.Context) {
 
 	return responder
 }
-
 
 func ServeRandomImg(prefix string, conf ServingConf) func(c *gin.Context) {
 	var responder func(c *gin.Context)
