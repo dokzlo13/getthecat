@@ -1,0 +1,22 @@
+sudo: false
+
+language: go
+go:
+  - "1.11.2"
+
+services:
+  - redis-server
+
+env:
+  - GO111MODULE=on
+
+git:
+  depth: 1
+
+before_install:
+  - curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+  - dep ensure
+
+
+script:
+  - go test -v .
