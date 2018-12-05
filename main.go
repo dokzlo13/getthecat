@@ -90,7 +90,7 @@ func main() {
 	}
 
 	for _, endpoint := range conf.Endpoints {
-		log.Printf("Initalizing serve for \"%s\"", endpoint)
+		log.Printf("Initializing serve for \"%s\"", endpoint)
 		//ImgDbs[endpoint] =
 		Imdb := NewImgDB(Api, conf.ImgFolder, endpoint)
 		go Watcher.WatchImages(Imdb)

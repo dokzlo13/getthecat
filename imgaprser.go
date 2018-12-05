@@ -58,7 +58,7 @@ func (i ImgSaver) GetImagesUrls(searcher Searhcer, query string, amount int) ([]
 		return []ImgInfo{}, err
 	}
 	lng := len(data)
-	log.Tracef("[ImgSaver] Request for seacrh is successfull! collected:%d items", lng)
+	log.Tracef("[ImgSaver] Request for seacrh is successful! collected:%d items", lng)
 	var results []ImgInfo
 	for c := 0; c < amount && c < lng; c++ {
 		url := data[c].Origin
@@ -77,7 +77,7 @@ func downloadImage(imginfo ImgInfo, rootpath string, wg *sync.WaitGroup, process
 	defer wg.Done()
 	url := imginfo.Origin
 	if url == "" {
-		log.Infof("[ImgSaver] Empty URL recieved %s, download FAILED", url)
+		log.Infof("[ImgSaver] Empty URL received %s, download FAILED", url)
 		return
 	}
 	request := req.New()
@@ -100,7 +100,7 @@ func downloadImage(imginfo ImgInfo, rootpath string, wg *sync.WaitGroup, process
 	}
 	imginfo.Path = path
 	imginfo.ID = id.String()
-	log.Debugf("[ImgSaver] Collecting img %s SUCEED", url)
+	log.Debugf("[ImgSaver] Collecting img %s SUCCEED", url)
 
 	processed <- imginfo
 }
@@ -112,14 +112,14 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 	if err != nil {
 		return []ImgInfo{}, err
 	}
-	log.Tracef("[ImgSaver] Request for search is successfull! collected:%d items", len(data))
+	log.Tracef("[ImgSaver] Request for search is successful! collected:%d items", len(data))
 
 	var results []ImgInfo
 	wg := new(sync.WaitGroup)
 	InfosChan := make(chan ImgInfo)
 	if len(data) < amount {
-		log.Infoln("[ImgSaver] recieved less items, then requred")
-		return []ImgInfo{}, fmt.Errorf("imgsaver recieve less items, then requred")
+		log.Infoln("[ImgSaver] received less items, then required")
+		return []ImgInfo{}, fmt.Errorf("imgsaver receive less items, then required")
 	}
 	wg.Add(len(data[:amount]))
 

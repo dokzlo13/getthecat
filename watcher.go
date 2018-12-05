@@ -85,7 +85,7 @@ func (ag ImgWatcher) syncCacheToDb(prefix string) error {
 		tx.Exec("UPDATE img_infos SET uses = ? WHERE id = ? AND type = ?", states[id], id, prefix)
 	}
 	if err := tx.Commit().Error; err != nil {
-		log.Infof("[Sync] Error commiting transaction for sync")
+		log.Infof("[Sync] Error committing transaction for sync")
 		tx.Rollback()
 		return err
 	}
@@ -97,11 +97,11 @@ func (ag ImgWatcher) syncDbToCache() {
 	var items []ImgInfo
 	var err error
 	ag.DB.Model(&ImgInfo{}).Find(&items)
-	log.Infof("[Watcher] Initalizing cache from db...")
+	log.Infof("[Watcher] Initializing cache from db...")
 	for _, item := range items {
 		err = ag.Cache.Set(item.Type, item)
 		if err != nil {
-			log.Warningf("[Watcher] Error initalizing cache for %v", item)
+			log.Warningf("[Watcher] Error Initializing cache for %v", item)
 		}
 	}
 	log.Warningln("[Watcher] Cache initalized!")
@@ -161,7 +161,7 @@ func NewImgWatcher(db *gorm.DB, conf WatcherConf, debug int) ImgWatcher {
 		cache, err = NewRedisCache(conf.Cache.Addr, conf.Cache.RedisDb)
 
 		if err != nil {
-			log.Errorf("Failed initalizing Redis-cache, cache disabled")
+			log.Errorf("Failed Initializing Redis-cache, cache disabled")
 			cache = NewMemCache()
 			log.Warningln("Using in-memory cache")
 

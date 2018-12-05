@@ -54,9 +54,9 @@ func TestMemCache_GetAviable(t *testing.T) {
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c11"
 	wanted := ImgInfo{ID: id, Uses: 1, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	cache.Set("test", wanted)
-	recieved, err := cache.GetActualId("test")
+	received, err := cache.GetActualId("test")
 	assert.NoError(t, err)
-	assert.Equal(t, id, recieved)
+	assert.Equal(t, id, received)
 }
 
 func TestMemCache_GetById(t *testing.T) {
@@ -65,9 +65,9 @@ func TestMemCache_GetById(t *testing.T) {
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c22"
 	wanted := ImgInfo{ID: id, Uses: 1, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	cache.Set("test", wanted)
-	recieved, err := cache.GetById("test", id, true)
+	received, err := cache.GetById("test", id, true)
 	assert.NoError(t, err)
-	assert.Equal(t, recieved, wanted)
+	assert.Equal(t, received, wanted)
 }
 
 func TestMemCache_NewMemCache(t *testing.T) {
@@ -81,9 +81,9 @@ func TestMemCache_GetScore(t *testing.T) {
 	id := "f3bc456e-44af-4e52-b9c2-cd88cf1c2c22"
 	wanted := ImgInfo{ID: id, Uses: 123, Height: 1, Width: 1, Origin: "test", Filesize: 1, Checksum: "test", Type: "test", Path: "tespath"}
 	cache.Set("test", wanted)
-	recieved, err := cache.GetById("test", id, true)
+	received, err := cache.GetById("test", id, true)
 	assert.NoError(t, err)
-	assert.Equal(t, recieved, wanted)
+	assert.Equal(t, received, wanted)
 	score, err := cache.GetScore("test", id)
 	assert.NoError(t, err)
 	//Incremented value by GetById
