@@ -14,8 +14,7 @@ var items []ImgInfo
 func FillItems(lng int) {
 	item := make([]ImgInfo, lng)
 	for i := range item {
-		id, _ := uuid.NewV4()
-		item[i] = ImgInfo{ID: id.String()}
+		item[i] = ImgInfo{ID: uuid.NewV4().String()}
 	}
 	items = item
 }
