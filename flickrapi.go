@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-type  Photo  struct {
+type Photo struct {
 	ID       string `json:"id"`
 	Owner    string `json:"owner"`
 	Secret   string `json:"secret"`
@@ -23,10 +23,10 @@ type  Photo  struct {
 
 type FlickrSearchResponse struct {
 	Photos struct {
-		Page    int    `json:"page"`
-		Pages   int    `json:"pages"`
-		Perpage int    `json:"perpage"`
-		Total   string `json:"total"`
+		Page    int     `json:"page"`
+		Pages   int     `json:"pages"`
+		Perpage int     `json:"perpage"`
+		Total   string  `json:"total"`
 		Photo   []Photo `json:"photo"`
 	} `json:"photos"`
 	Stat string `json:"stat"`
@@ -37,8 +37,8 @@ type FlickrImagesResponse struct {
 		//Canblog     int `json:"canblog"`
 		//Canprint    int `json:"canprint"`
 		//Candownload int `json:"candownload"`
-		Size        []struct {
-			Label  string `json:"label"`
+		Size []struct {
+			Label string `json:"label"`
 			//Width  int    `json:"width"`
 			//Height int    `json:"height"`
 			Source string `json:"source"`
@@ -49,11 +49,9 @@ type FlickrImagesResponse struct {
 	Stat string `json:"stat"`
 }
 
-
 type FlickrApi struct {
-	api *flickr.Client
+	api    *flickr.Client
 	amount int
-
 }
 
 func NewFlickrApi(key string, amount int) FlickrApi {
@@ -62,7 +60,7 @@ func NewFlickrApi(key string, amount int) FlickrApi {
 		//Token: "token", // optional
 		//Sig: "sig", // optional
 	}
-	searcher := FlickrApi{api:client, amount:amount}
+	searcher := FlickrApi{api: client, amount: amount}
 	return searcher
 }
 
@@ -73,7 +71,7 @@ func extractOrigin(client FlickrApi, imginfo Photo, wg *sync.WaitGroup, extracte
 	var err error
 
 	log.Traceln("[Flickr] Requesting", imginfo.ID)
-	imgsizes, err = client.api.Request("photos.getSizes", flickr.Params{"photo_id":imginfo.ID})
+	imgsizes, err = client.api.Request("photos.getSizes", flickr.Params{"photo_id": imginfo.ID})
 	if err != nil {
 		log.Infoln("[Flickr] Error requesting ", imginfo.ID)
 		return
@@ -88,8 +86,8 @@ func extractOrigin(client FlickrApi, imginfo Photo, wg *sync.WaitGroup, extracte
 	for _, imgsize := range imresp.Sizes.Size {
 		if imgsize.Label == "Large" {
 			//Here we done
-			extracted <-  ImgInfo{Origin:imgsize.Source}
-			log.Debugf("[Flickr] Extracted origin %s for \"%s\"", imgsize.Source, imginfo.ID)
+			extracted <- ImgInfo{Origin: imgsize.Source}
+			log.Debugf("[Flickr] Extracted origin for \"%s\"", imginfo.ID)
 			break
 		}
 	}
@@ -101,11 +99,11 @@ func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 	page := randrange(0, 300)
 	log.Tracef("[Flickr] Requesting results in page \"%d\" ", page)
 	d, err := f.api.Request("photos.search",
-		 						flickr.Params{
-								//"text":query,
-								"per_page": strconv.Itoa(f.amount),
-								"page": strconv.Itoa(page),
-								"tags": query})
+		flickr.Params{
+			//"text":query,
+			"per_page": strconv.Itoa(f.amount),
+			"page":     strconv.Itoa(page),
+			"tags":     query})
 
 	if err != nil {
 		return []ImgInfo{}, err
@@ -127,10 +125,10 @@ func (f FlickrApi) SearchImages(query string) ([]ImgInfo, error) {
 		go extractOrigin(f, img, wg, InfosChan)
 
 	}
-	go func (){
+	go func() {
 		wg.Wait()
 		close(InfosChan)
-	} ()
+	}()
 	collectImagesInfo(InfosChan, &results)
 
 	if len(results) == 0 {

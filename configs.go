@@ -7,35 +7,34 @@ import (
 )
 
 type ServingConf struct {
-	Mode     string `json:"mode"`
-	Filetype string `json:"filetype"`
+	Mode    string `json:"mode"`
 	ApiPath string `json:"apipath"`
 }
 
 type WatcherConf struct {
-	MinimalAviable int `json:"minimal_aviable"`
-	MaximumUses int `json:"maximal_uses"`
-	Checktime int `json:"checktime"`
+	MinimalAviable int    `json:"minimal_aviable"`
+	MaximumUses    int    `json:"maximal_uses"`
+	Checktime      int    `json:"checktime"`
 	CollectingMode string `json:"collect"`
-	Cache struct{
-		Addr string `json:"addr"`
-		RedisDb int `json:"db"`
+	Cache          struct {
+		Addr    string `json:"addr"`
+		RedisDb int    `json:"db"`
 	} `json:"cache"`
 }
 
 type Config struct {
 	Auth struct {
-		ApiKey string `json:"apikey"`
+		ApiKey   string `json:"apikey"`
 		GoogleCX string `json:"cx"`
 	} `json:"auth"`
 	WatcherConf WatcherConf `json:"watcher"`
 	ServingConf ServingConf `json:"server"`
-	ImgFolder string `json:"folder"`
-	DbPath string `json:"db"`
-	Debug int `json:"debug"`
-	Mode string `json:"engine"`
-	Endpoints []string `json:"endpoints"`
-	Logfile string `json:"logfile"`
+	ImgFolder   string      `json:"folder"`
+	DbPath      string      `json:"db"`
+	Debug       int         `json:"debug"`
+	Mode        string      `json:"engine"`
+	Endpoints   []string    `json:"endpoints"`
+	Logfile     string      `json:"logfile"`
 }
 
 func ConfigCheck(conf Config) error {
@@ -47,23 +46,18 @@ func ConfigCheck(conf Config) error {
 		return fmt.Errorf("Config invalid argument \"%s\" for \"server.mode\"", conf.ServingConf.Mode)
 	}
 
-	if !(conf.ServingConf.Filetype == "image" || conf.ServingConf.Filetype == "attachment") {
-		return fmt.Errorf("Config invalid argument \"%s\" for \"server.mode\"", conf.ServingConf.Filetype)
-	}
-
 	if conf.WatcherConf.CollectingMode == "urls" && conf.ServingConf.Mode == "cache" {
-		return fmt.Errorf("Config conflict for values \"server\" and \"watcher\"")
+		return fmt.Errorf("Config conflict for values \"server.mode: %s\" and \"watcher.collect: %s\"", conf.ServingConf.Mode, conf.WatcherConf.CollectingMode)
 	}
 	return nil
 }
-
 
 func LoadConfig(path string) (Config, error) {
 	var conf Config
 	err := config.Load(file.NewSource(
 		file.WithPath(path),
 	))
-	if err!=nil {
+	if err != nil {
 		return conf, err
 	}
 	config.Scan(&conf)

@@ -14,3 +14,5 @@ CatAPI
 *.db-shm
 
 *.db-wal
+
+vendor/

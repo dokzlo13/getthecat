@@ -4,7 +4,6 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"github.com/disintegration/imaging"
 	"github.com/h2non/filetype"
 	"github.com/imroc/req"
 	"github.com/satori/go.uuid"
@@ -15,10 +14,14 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 type ImgSaver struct {
-	 Folder string
+	Folder string
 }
 
 func NewImageSaver(folder string) ImgSaver {
@@ -28,7 +31,7 @@ func NewImageSaver(folder string) ImgSaver {
 			log.Fatalf("Error creating images folder for ImgSaver \"%s\"", folder)
 		}
 	}
-	return ImgSaver{Folder:folder}
+	return ImgSaver{Folder: folder}
 }
 
 func (i ImgSaver) GetImagesFiles(searcher Searhcer, query string, amount int) ([]ImgInfo, error) {
@@ -57,9 +60,9 @@ func (i ImgSaver) GetImagesUrls(searcher Searhcer, query string, amount int) ([]
 	lng := len(data)
 	log.Tracef("[ImgSaver] Request for seacrh is successfull! collected:%d items", lng)
 	var results []ImgInfo
-	for c:=0; c < amount && c < lng; c++{
+	for c := 0; c < amount && c < lng; c++ {
 		url := data[c].Origin
-		id, _ := uuid.NewV4()
+		id := uuid.NewV4()
 		data[c].ID = id.String()
 		log.Debugf("[ImgSaver] Collecting img ORIGINS %s SUCCEED", url)
 		results = append(results, data[c])
@@ -87,7 +90,7 @@ func downloadImage(imginfo ImgInfo, rootpath string, wg *sync.WaitGroup, process
 		log.Infof("[ImgSaver] Collecting img %s FAILED", url)
 		return
 	}
-	id, _ := uuid.NewV4()
+	id := uuid.NewV4()
 	path := filepath.Join(rootpath, id.String())
 
 	err = r.ToFile(path)
@@ -114,16 +117,19 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 	var results []ImgInfo
 	wg := new(sync.WaitGroup)
 	InfosChan := make(chan ImgInfo)
+	if len(data) < amount {
+		log.Infoln("[ImgSaver] recieved less items, then requred")
+		return []ImgInfo{}, fmt.Errorf("imgsaver recieve less items, then requred")
+	}
 	wg.Add(len(data[:amount]))
-
 
 	for _, img := range data[:amount] {
 		go downloadImage(img, i.Folder, wg, InfosChan)
 	}
-	go func (){
+	go func() {
 		wg.Wait()
 		close(InfosChan)
-	} ()
+	}()
 	collectImagesInfo(InfosChan, &results)
 
 	if len(results) == 0 {
@@ -135,51 +141,27 @@ func (i ImgSaver) saveRandomImages(searcher Searhcer, query string, amount int) 
 
 func (i ImgSaver) GetImage(id string) (*os.File, error) {
 	path := filepath.Join(i.Folder, id)
-	//var buf []byte
 
-	buf := make([]byte, 10)
 	descr, err := os.OpenFile(path, os.O_RDWR, 0644)
-	//descr, err := os.Open(path)
 	if err != nil {
 		log.Infof("[ImgGetter] Error openning file: %s err: %v", path, err)
 		return nil, err
 	}
-	_, err = descr.Read(buf)
-	if err != nil {
-		log.Infof("[ImgGetter] Error reading file for fetching mimetype: %s err: %v", path, err)
-		return nil, err
-	}
-
-	//Filetype checkout
-	kind, unknown := filetype.Match(buf)
-	if unknown != nil {
-		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", path, err)
-		return nil, fmt.Errorf("Unknown file type for \"%s\"!", path)
-	}
-	if !filetype.IsImage(buf) {
-		log.Debugf("[ImgGetter] Wrong mimetype for: %s err: %v", path, err)
-		return nil, fmt.Errorf("Wrong file type for \"%s\" \"%s\"", path, kind.MIME)
-	}
-
-	descr.Seek(0, 0)
 	return descr, nil
 
 }
 
-
 func getImageDimension(file *os.File) (int, int) {
 	image, _, err := image.DecodeConfig(file)
 	if err != nil {
-		log.Tracef("[getImageDimension] Error collecting dimensions from image: %v\n", err)
+		log.Infof("[getImageDimension] Error collecting dimensions from image: %v", err)
 	}
 	return image.Width, image.Height
 }
 
-
 func md5Hash(file *os.File) (string, error) {
 	//Initialize variable returnMD5String now in case an error has to be returned
 	var returnMD5String string
-
 
 	//Open a new hash interface to write to
 	hash := md5.New()
@@ -201,23 +183,29 @@ func md5Hash(file *os.File) (string, error) {
 
 func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processed chan ImgInfo) {
 	defer wg.Done()
-	log.Tracef("preprocessing image %s", descr.Name())
+	log.Tracef("[Preprocess] Preprocessing image %s", descr.Name())
 	imginfo.Width, imginfo.Height = getImageDimension(descr)
-	if imginfo.Width != 800 || imginfo.Height != 600 {
-		descr.Seek(0, 0)
-		img, err := imaging.Decode(descr)
-		if err != nil {
-			log.Infof("[Preprocess] Error opening as image: %s with err \"%v\"", imginfo.ID, err)
-			return
-		}
-		dstImage800 := imaging.Fit(img, 800, 600, imaging.Lanczos)
-		descr.Seek(0, 0)
-		err = imaging.Encode(descr, dstImage800, imaging.PNG)
-		if err != nil {
-			log.Infof("[Preprocess] Error saving image: %s with err \"%v\"", imginfo.ID, err)
-			return
-		}
+	var err error
+
+	descr.Seek(0, 0)
+	buf := make([]byte, 10)
+	_, err = descr.Read(buf)
+	if err != nil {
+		log.Infof("[ImgGetter] Error reading file for fetching mimetype: %s err: %v", imginfo.ID, err)
+		return
 	}
+
+	//Filetype checkout
+	ftype, err := filetype.Match(buf)
+	if err != nil {
+		log.Infof("[ImgGetter] Error extracting mimetype from: %s err: %v", imginfo.ID, err)
+		return
+	}
+	if isimage := filetype.IsImage(buf); !isimage {
+		log.Infof("[ImgGetter] Wrong mimetype for: %s err: %v", imginfo.ID, ftype)
+		return
+	}
+	imginfo.Mimetype = ftype.MIME.Type + "/" + ftype.MIME.Subtype
 
 	descr.Seek(0, 0)
 	checksum, err := md5Hash(descr)
@@ -235,6 +223,7 @@ func preprocessImg(imginfo ImgInfo, descr *os.File, wg *sync.WaitGroup, processe
 	} else {
 		imginfo.Filesize = fi.Size()
 	}
+
 	log.Debugf("[Preprocess] Image %s preprocessed!", imginfo.ID)
 	processed <- imginfo
 	return
@@ -246,13 +235,11 @@ func collectImagesInfo(channel chan ImgInfo, InfosList *[]ImgInfo) {
 	}
 }
 
-
-func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
+func (i ImgSaver) preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 	log.Trace("[Preprocess] Starting preprocessing images!")
 	var results []ImgInfo
 	wg := new(sync.WaitGroup)
 	InfosChan := make(chan ImgInfo)
-
 
 	for _, img := range imgs {
 		descr, err := i.GetImage(img.ID)
@@ -263,12 +250,10 @@ func (i ImgSaver)preprocessImgs(imgs []ImgInfo) ([]ImgInfo, error) {
 		wg.Add(1)
 		go preprocessImg(img, descr, wg, InfosChan)
 	}
-	go func (){
+	go func() {
 		wg.Wait()
 		close(InfosChan)
-	} ()
+	}()
 	collectImagesInfo(InfosChan, &results)
-	//time.Sleep(time.Millisecond*50)
-
 	return results, nil
 }

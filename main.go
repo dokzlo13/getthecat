@@ -3,146 +3,21 @@ package main
 import (
 	"flag"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"github.com/gin-gonic/gin"
-	"github.com/jinzhu/gorm"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 )
 
-var (
-	Watcher ImgWatcher
-	//ImgDbs  map[string]ImgDB
-	db *gorm.DB
-	)
+var Watcher ImgWatcher
 
-func setHeaders(filetype string, prefix string) map[string]string {
-	var extraHeaders map[string]string
-	switch filetype {
-	case "attachment":
-		extraHeaders = map[string]string{
-			"Content-Disposition": fmt.Sprintf("attachment; filename=\"%s.png\"", prefix),
-		}
-	case "image":
-		extraHeaders = map[string]string{}
-	}
-	return extraHeaders
-
+func randrange(min, max int) int {
+	rand.Seed(time.Now().Unix())
+	return rand.Intn(max-min) + min
 }
-
-
-func ServeImgInfo(prefix string) func(c *gin.Context) {
-	return func(c *gin.Context) {
-		imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), false)
-		if err != nil {
-			log.Errorf("No aviable file found with err \"%v\"", err)
-			c.AbortWithError(404, err)
-			return
-		}
-		c.JSON(200, imginfo)
-	}
-}
-
-func ServeRandomImgInfo(prefix string) func(c *gin.Context) {
-	return func(c *gin.Context) {
-		imginfo, err := Watcher.GetImg(prefix, false)
-		if err != nil {
-			log.Errorf("No aviable file found with err \"%v\"", err)
-			c.AbortWithError(404, err)
-			return
-		}
-		c.JSON(200, imginfo)
-	}
-}
-
-func ServeImg(prefix string, conf ServingConf) func(c *gin.Context) {
-	headers := setHeaders(conf.Filetype, prefix)
-	var responder func(c *gin.Context)
-	switch conf.Mode {
-	case "cache":
-		responder = func(c *gin.Context) {
-			imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), true)
-			if err != nil {
-				log.Errorf("No requested file found with err \"%v\"", err)
-				c.AbortWithError(404, err)
-				return
-			}
-
-			img, err := Watcher.GetFile(prefix, imginfo.ID)
-			if err != nil {
-				log.Errorf("Error opening file %v, %v", img, err)
-				c.AbortWithError(502, err)
-				return
-			}
-
-			if img == nil {
-				log.Errorf("Empty file %v, %v", img, err)
-				c.AbortWithError(502, err)
-				return
-			}
-			c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, headers)
-		}
-	case "proxy":
-		responder = func(c *gin.Context) {
-			imginfo, err := Watcher.GetImgById(prefix, c.Param("id"), true)
-			if err != nil {
-				log.Errorf("No aviable file found with err \"%v\"", err)
-				c.AbortWithError(404, err)
-				return
-			}
-			c.Redirect(303, imginfo.Origin)
-		}
-	}
-
-	return responder
-}
-
-func ServeRandomImg(prefix string, conf ServingConf) func(c *gin.Context) {
-	headers := setHeaders(conf.Filetype, prefix)
-	var responder func(c *gin.Context)
-	switch conf.Mode {
-	case "cache":
-		responder = func(c *gin.Context) {
-			imginfo, err := Watcher.GetImg(prefix, true)
-			if err != nil {
-				log.Errorf("No aviable file found with err \"%v\"", err)
-				c.AbortWithError(404, err)
-				return
-			}
-
-			img, err := Watcher.GetFile(prefix, imginfo.ID)
-			if err != nil {
-				log.Errorf("Error opening file %v, %v", img, err)
-				c.AbortWithError(502, err)
-				return
-			}
-
-			if img == nil {
-				log.Errorf("Empty file %v, %v", img, err)
-				c.AbortWithError(502, err)
-				return
-			}
-			c.DataFromReader(http.StatusOK, imginfo.Filesize, "image/png", img, headers)
-		}
-	case "proxy":
-		responder = func(c *gin.Context) {
-			imginfo, err := Watcher.GetImg(prefix, true)
-			if err != nil {
-				log.Errorf("No aviable file found with err \"%v\"", err)
-				c.AbortWithError(404, err)
-				return
-			}
-			c.Redirect(303, imginfo.Origin)
-		}
-	}
-
-	return responder
-}
-
 
 func SetupCloseHandler() {
 	c := make(chan os.Signal, 2)
@@ -150,20 +25,22 @@ func SetupCloseHandler() {
 	go func() {
 		<-c
 		fmt.Println("\r- Ctrl+C pressed in Terminal, shutting down...")
-		//DeleteFiles()
-		err := db.Debug().Close()
-		if err != nil {
+		Watcher.Sync()
+		if err := Watcher.Cache.Flush(); err != nil {
+			log.Errorln("Error cleaning cache!")
+		} else {
+			log.Infoln("Cache cleaned closed!")
+		}
+		if err := Watcher.DB.Debug().Close(); err != nil {
 			log.Errorln("Error closing DB, database may be corrupted")
 		} else {
 			log.Infoln("Database closed!")
 		}
-		//Watcher.PurgeCache()
 		os.Exit(0)
 	}()
 }
 
-
-func main(){
+func main() {
 	var Api Searhcer
 
 	rand.Seed(time.Now().Unix())
@@ -188,14 +65,16 @@ func main(){
 		log.Fatalf("Wrong engine \"%s\" for GetTheCat", conf.Mode)
 	}
 
-	db, err = ConnectDB(conf.DbPath)
+	db, err := ConnectDB(conf.DbPath)
 	if err != nil {
 		log.Fatalf("Cannot connect to DB %s with error \"%s\"", conf.DbPath, err)
 	}
 	//defer db.Close()
-	SetupCloseHandler()
 
 	Watcher = NewImgWatcher(db, conf.WatcherConf, conf.Debug)
+	SetupCloseHandler()
+
+	Watcher.RemoveEmptyFiles()
 
 	router := gin.New()
 	router.Use(
@@ -204,8 +83,7 @@ func main(){
 	)
 
 	var api *gin.RouterGroup
-	//ImgDbs = make(map[string]ImgDB, len(conf.Endpoints))
-	if apipath:=conf.ServingConf.ApiPath; apipath != "" {
+	if apipath := conf.ServingConf.ApiPath; apipath != "" {
 		api = router.Group(apipath)
 	} else {
 		api = router.Group("")
@@ -217,12 +95,16 @@ func main(){
 		Imdb := NewImgDB(Api, conf.ImgFolder, endpoint)
 		go Watcher.WatchImages(Imdb)
 		subgroup := api.Group(endpoint)
-		subgroup.GET("/info", ServeRandomImgInfo(endpoint))
-		subgroup.GET("/info/:id", ServeImgInfo(endpoint))
-		subgroup.GET("/img", ServeRandomImg(endpoint, conf.ServingConf))
-		subgroup.GET("/img/:id", ServeImg(endpoint, conf.ServingConf))
+		subgroup.GET("/info/new", ServeActualImgInfo(endpoint))
+		subgroup.GET("/info/rand", ServeRandomImgInfo(endpoint))
+		subgroup.GET("/info/static/:id", ServeImgInfo(endpoint))
+
+		subgroup.GET("/img/new", ServeActualImg(endpoint, conf.ServingConf))
+		subgroup.GET("/img/rand", ServeRandomImg(endpoint, conf.ServingConf))
+		subgroup.GET("/img/static/:id", ServeImg(endpoint, conf.ServingConf))
 	}
 
+	go Watcher.StartSync()
 	router.Run("0.0.0.0:8080")
 
 }

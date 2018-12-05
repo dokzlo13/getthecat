@@ -34,10 +34,10 @@ func (hook *WriterHook) Levels() []log.Level {
 func setupLogs(debuglvl int, logfile string) {
 	log.SetOutput(ioutil.Discard) // Send all logs to nowhere by default
 	textFormatter := &prefixed.TextFormatter{
-		ForceColors: true,
-		DisableColors: false,
+		ForceColors:     true,
+		DisableColors:   false,
 		ForceFormatting: true,
-		FullTimestamp: true,
+		FullTimestamp:   true,
 	}
 
 	var writer *os.File
@@ -45,7 +45,7 @@ func setupLogs(debuglvl int, logfile string) {
 	case 0:
 		log.SetLevel(log.InfoLevel)
 
-		log.SetFormatter(&log.JSONFormatter{PrettyPrint:true, DisableTimestamp:false})
+		log.SetFormatter(&log.JSONFormatter{PrettyPrint: true, DisableTimestamp: false})
 		file, err := os.OpenFile(logfile, os.O_CREATE|os.O_WRONLY, 0666)
 		if err != nil {
 			log.Warningf("Error creating\\opening log file \"%s\", using STDERR", logfile)
@@ -79,7 +79,7 @@ func setupLogs(debuglvl int, logfile string) {
 				log.DebugLevel,
 			},
 		})
-	case 2 :
+	case 2:
 		log.SetLevel(log.TraceLevel)
 		log.SetFormatter(textFormatter)
 		log.AddHook(&WriterHook{
@@ -94,7 +94,7 @@ func setupLogs(debuglvl int, logfile string) {
 				log.TraceLevel,
 			},
 		})
-	case 3 :
+	case 3:
 		log.SetLevel(log.TraceLevel)
 		log.SetFormatter(textFormatter)
 		log.AddHook(&WriterHook{
@@ -110,6 +110,5 @@ func setupLogs(debuglvl int, logfile string) {
 			},
 		})
 	}
-
 
 }
